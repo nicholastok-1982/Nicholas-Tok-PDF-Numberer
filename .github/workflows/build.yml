@@ -1,0 +1,28 @@
+name: Build Standalone Software
+
+on: [push]
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.11'
+
+    - name: Install requirements
+      run: pip install pymupdf pyinstaller
+
+    - name: Build the EXE
+      run: pyinstaller --onefile --windowed pdf_numberer.py
+
+    - name: Upload the finished software
+      uses: actions/upload-artifact@v4
+      with:
+        name: PDF-Numberer-Software
+        path: dist/pdf_numberer.exe
