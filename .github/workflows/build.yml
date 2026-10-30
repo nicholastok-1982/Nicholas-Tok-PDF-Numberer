@@ -16,7 +16,7 @@ jobs:
         python-version: '3.11'
 
     - name: Install requirements
-      run: pip install pymupdf pyinstaller
+      run: pip install pymupdf==1.23.26 pyinstaller
 
     - name: Build the EXE
       run: pyinstaller --onefile --windowed pdf_numberer.py
