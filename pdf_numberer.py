@@ -5,14 +5,11 @@ import os
 import sys
 from PIL import Image, ImageTk
 
-# Store references to images to prevent them from turning blank
 thumbnail_references = []
 checkbox_vars = {}
 
 def resource_path(relative_path):
-    """ Get the absolute path to a resource, works for dev and for PyInstaller """
     try:
-        # PyInstaller creates a temp folder and stores path in _MEIPASS
         base_path = sys._MEIPASS
     except Exception:
         base_path = os.path.abspath(".")
@@ -41,8 +38,6 @@ def select_input_file():
         load_previews(filepath)
 
 def load_previews(filepath):
-    """ Generates thumbnails and checkboxes for every page """
-    # Clear existing previews
     for widget in scrollable_frame.winfo_children():
         widget.destroy()
     thumbnail_references.clear()
@@ -54,17 +49,14 @@ def load_previews(filepath):
     try:
         doc = fitz.open(filepath)
         total_pages = len(doc)
-        
-        columns = 4 # How many previews per row
+        columns = 4 
         
         for i in range(total_pages):
-            # Update UI occasionally so it doesn't freeze on huge PDFs
             if i % 10 == 0:
                 status_label.config(text=f"Status: Generating preview {i}/{total_pages}...")
                 root.update()
 
             page = doc[i]
-            # Create a small thumbnail image
             pix = page.get_pixmap(matrix=fitz.Matrix(0.1, 0.1))
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             photo = ImageTk.PhotoImage(img)
@@ -73,11 +65,9 @@ def load_previews(filepath):
             row = (i // columns) * 2
             col = i % columns
 
-            # Display thumbnail
             lbl = tk.Label(scrollable_frame, image=photo, bd=1, relief="solid")
             lbl.grid(row=row, column=col, padx=10, pady=(10, 0))
 
-            # Display checkbox
             var = tk.BooleanVar()
             checkbox_vars[i] = var
             chk = ttk.Checkbutton(scrollable_frame, text=f"Pg {i+1} Rotate", variable=var)
@@ -107,12 +97,12 @@ def process_pdf():
     root.update()
 
     try:
-        # Get UI Settings
         fontsize = int(size_var.get())
         color = get_color_rgb(color_var.get())
         fontname = get_font_name(font_var.get())
         position = pos_var.get()
         rotation_angle = int(rot_angle_var.get().replace("°", ""))
+        use_bg = bg_var.get() # Check if white background is requested
 
         doc = fitz.open(input_pdf)
         total_pages = len(doc)
@@ -120,10 +110,10 @@ def process_pdf():
         for page_num in range(total_pages):
             page = doc[page_num]
             
-            # 1. Rotate the page if checked in the preview window
-            if page_num in checkbox_vars and checkbox_vars[page_num].get():
-                page.set_rotation(page.rotation + rotation_angle)
-
+            # 1. FIX HIDDEN ROTATION: Temporarily un-rotate the page to calculate coordinates properly
+            original_rotation = page.rotation
+            page.set_rotation(0)
+            
             # 2. Add Page Numbers
             text = f"Page {page_num + 1} of {total_pages}"
             text_length = fitz.get_text_length(text, fontname=fontname, fontsize=fontsize)
@@ -141,8 +131,20 @@ def process_pdf():
             if "Top" in position: y = margin_y + fontsize
             else: y = page_rect.height - margin_y # Bottom
             
-            page.insert_text((x, y), text, fontsize=fontsize, fontname=fontname, color=color)
+            # Optional: Draw a solid white box behind the text to fix transparent/dark image issues
+            if use_bg:
+                bg_rect = fitz.Rect(x - 5, y - fontsize - 2, x + text_length + 5, y + 5)
+                page.draw_rect(bg_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
+
+            # Insert Text (Forced to top layer with overlay=True)
+            page.insert_text((x, y), text, fontsize=fontsize, fontname=fontname, color=color, overlay=True)
             
+            # 3. Restore rotation, and apply user requested rotation if checked
+            final_rotation = original_rotation
+            if page_num in checkbox_vars and checkbox_vars[page_num].get():
+                final_rotation += rotation_angle
+            page.set_rotation(final_rotation)
+
         doc.save(output_pdf)
         doc.close()
         
@@ -156,13 +158,13 @@ def process_pdf():
 # --- GUI Setup ---
 root = tk.Tk()
 root.title("STA Singapore QC - PDF Manager")
-root.geometry("1100x700")
+root.geometry("1100x750")
 root.eval('tk::PlaceWindow . center')
 
 style = ttk.Style(root)
 style.theme_use('clam')
 
-# --- Header with Logo and Name ---
+# --- Header ---
 header_frame = tk.Frame(root, bg="#ffffff", bd=2, relief="groove")
 header_frame.pack(fill="x", padx=10, pady=10)
 
@@ -173,10 +175,10 @@ name_label.pack(side="left", padx=15, pady=10)
 try:
     logo_path = resource_path("logo.jpg")
     logo_img = Image.open(logo_path)
-    logo_img.thumbnail((200, 80)) # Resizes logo beautifully
+    logo_img.thumbnail((200, 80))
     logo_photo = ImageTk.PhotoImage(logo_img)
     logo_label = tk.Label(header_frame, image=logo_photo, bg="#ffffff")
-    logo_label.image = logo_photo # Keep reference
+    logo_label.image = logo_photo
     logo_label.pack(side="right", padx=15, pady=5)
 except Exception:
     tk.Label(header_frame, text="[WuXi AppTec Logo Missing]", bg="#ffffff").pack(side="right", padx=15)
@@ -185,11 +187,9 @@ except Exception:
 main_paned = ttk.PanedWindow(root, orient=tk.HORIZONTAL)
 main_paned.pack(fill="both", expand=True, padx=10, pady=5)
 
-# Left Panel: Controls
 left_frame = ttk.Frame(main_paned)
 main_paned.add(left_frame, weight=1)
 
-# Right Panel: Previews
 right_frame = ttk.LabelFrame(main_paned, text="PDF Preview & Rotation")
 main_paned.add(right_frame, weight=3)
 
@@ -204,30 +204,30 @@ ttk.Button(file_frame, text="Browse", command=select_input_file).pack(pady=5)
 num_frame = ttk.LabelFrame(left_frame, text="2. Page Number Styling")
 num_frame.pack(fill="x", pady=10)
 
-# Font Style
 ttk.Label(num_frame, text="Font:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
 font_var = tk.StringVar(value="Arial / Helvetica")
 ttk.Combobox(num_frame, textvariable=font_var, state="readonly", width=17, 
              values=("Arial / Helvetica", "Times New Roman", "Courier")).grid(row=0, column=1, pady=5)
 
-# Position
 ttk.Label(num_frame, text="Position:").grid(row=1, column=0, padx=5, pady=5, sticky="e")
 pos_var = tk.StringVar(value="Bottom Center")
 ttk.Combobox(num_frame, textvariable=pos_var, state="readonly", width=17,
              values=("Bottom Left", "Bottom Center", "Bottom Right", "Top Left", "Top Center", "Top Right")).grid(row=1, column=1, pady=5)
 
-# Font Size
 ttk.Label(num_frame, text="Size:").grid(row=2, column=0, padx=5, pady=5, sticky="e")
 size_var = tk.StringVar(value="11")
 ttk.Spinbox(num_frame, from_=6, to=36, textvariable=size_var, width=15).grid(row=2, column=1, pady=5)
 
-# Font Color
 ttk.Label(num_frame, text="Color:").grid(row=3, column=0, padx=5, pady=5, sticky="e")
 color_var = tk.StringVar(value="Black")
 ttk.Combobox(num_frame, textvariable=color_var, state="readonly", width=17,
              values=("Black", "Red", "Blue", "Green", "Gray", "White")).grid(row=3, column=1, pady=5)
 
-# Rotation Angle for Checked Pages
+# New Checkbox for White Background
+bg_var = tk.BooleanVar(value=False)
+bg_chk = ttk.Checkbutton(num_frame, text="Solid White Box Behind Number\n(Fixes unreadable scanned pages)", variable=bg_var)
+bg_chk.grid(row=4, column=0, columnspan=2, pady=5, padx=5, sticky="w")
+
 rot_frame = ttk.LabelFrame(left_frame, text="3. Rotation Settings")
 rot_frame.pack(fill="x", pady=10)
 ttk.Label(rot_frame, text="Checked Angle:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
@@ -235,9 +235,8 @@ rot_angle_var = tk.StringVar(value="90°")
 ttk.Combobox(rot_frame, textvariable=rot_angle_var, state="readonly", width=10,
              values=("90°", "180°", "270°")).grid(row=0, column=1, pady=5)
 
-# Process Button
 tk.Button(left_frame, text="PROCESS & SAVE PDF", command=process_pdf, 
-          bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10).pack(fill="x", pady=20)
+          bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10).pack(fill="x", pady=15)
 
 status_label = ttk.Label(left_frame, text="Status: Ready", font=("Arial", 10, "bold"))
 status_label.pack()
