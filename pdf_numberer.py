@@ -26,7 +26,7 @@ translations = {
         "rot_angle": "Checked Angle:",
         "process": "PROCESS & SAVE PDF",
         "status_ready": "Status: Ready",
-        "preview_frame": "PDF Preview & Rotation",
+        "preview_frame": "PDF Preview & Rotation (Scroll to view all)",
         "lang": "Language / 语言:",
         "positions": ["Bottom Left", "Bottom Center", "Bottom Right", "Top Left", "Top Center", "Top Right"],
         "colors": ["Black", "Red", "Blue", "Green", "Gray", "White"],
@@ -57,7 +57,7 @@ translations = {
         "rot_angle": "勾选页旋转角度：",
         "process": "处理并保存 PDF",
         "status_ready": "状态：就绪",
-        "preview_frame": "PDF 预览与旋转",
+        "preview_frame": "PDF 预览与旋转 (滑动鼠标滚轮查看)",
         "lang": "语言 / Language:",
         "positions": ["左下", "中下", "右下", "左上", "中上", "右上"],
         "colors": ["黑色", "红色", "蓝色", "绿色", "灰色", "白色"],
@@ -102,7 +102,6 @@ def change_language(event=None):
     right_frame.config(text=t["preview_frame"])
     lang_label.config(text=t["lang"])
     
-    # Safe update comboboxes
     pos_idx = pos_dropdown.current()
     pos_dropdown['values'] = t["positions"]
     pos_dropdown.current(pos_idx if pos_idx >= 0 else 1)
@@ -111,11 +110,9 @@ def change_language(event=None):
     color_dropdown['values'] = t["colors"]
     color_dropdown.current(col_idx if col_idx >= 0 else 0)
 
-    # Update status if ready
     if "Ready" in status_label.cget("text") or "就绪" in status_label.cget("text"):
         status_label.config(text=t["status_ready"])
 
-    # Update preview checkboxes
     for i, chk in checkbox_widgets.items():
         chk.config(text=t["pg_rotate"].format(i+1))
 
@@ -197,13 +194,12 @@ def process_pdf():
         use_bg = bg_var.get()
         rotation_angle = int(rot_angle_var.get().replace("°", ""))
 
-        # Map dropdowns using index for language immunity
         font_idx = font_dropdown.current()
         font_map = ["helv", "times-roman", "cour"]
         fontname = font_map[font_idx if font_idx >= 0 else 0]
 
-        pos_idx = pos_dropdown.current() # 0:BL, 1:BC, 2:BR, 3:TL, 4:TC, 5:TR
-        col_idx = color_dropdown.current() # 0:Blk, 1:Red, 2:Blu, 3:Grn, 4:Gry, 5:Wht
+        pos_idx = pos_dropdown.current() 
+        col_idx = color_dropdown.current() 
         
         color_map = [(0, 0, 0), (1, 0, 0), (0, 0, 1), (0, 0.5, 0), (0.5, 0.5, 0.5), (1, 1, 1)]
         color = color_map[col_idx if col_idx >= 0 else 0]
@@ -213,30 +209,43 @@ def process_pdf():
         
         for page_num in range(total_pages):
             page = doc[page_num]
-            original_rotation = page.rotation
-            page.set_rotation(0) # Un-rotate temporarily
             
-            # Text remains English for official QC Lab compliance
+            # --- MAGIC FIX FOR QC LAB PDFs ---
+            # 1. "Seal" the page contents to stop transparent layers & clipping paths from hiding the text
+            page.wrap_contents()
+            
+            original_rotation = page.rotation
+            page.set_rotation(0) 
+            
             text = f"Page {page_num + 1} of {total_pages}"
             text_length = fitz.get_text_length(text, fontname=fontname, fontsize=fontsize)
             
-            page_rect = page.rect
+            # 2. Use CropBox instead of Rect to guarantee we don't print in a scanner's hidden margin
+            page_rect = page.cropbox 
+            
             margin_x = 30
             margin_y = 30
             
-            # X coordinate
-            if pos_idx in (0, 3): x = margin_x
-            elif pos_idx in (2, 5): x = page_rect.width - margin_x - text_length
-            else: x = (page_rect.width / 2) - (text_length / 2) # Center
+            # Calculate X (Left, Center, Right) using strict CropBox boundaries
+            if pos_idx in (0, 3): 
+                x = page_rect.x0 + margin_x
+            elif pos_idx in (2, 5): 
+                x = page_rect.x1 - margin_x - text_length
+            else: 
+                x = page_rect.x0 + (page_rect.width / 2) - (text_length / 2)
                 
-            # Y coordinate
-            if pos_idx in (3, 4, 5): y = margin_y + fontsize
-            else: y = page_rect.height - margin_y # Bottom
+            # Calculate Y (Top, Bottom) using strict CropBox boundaries
+            if pos_idx in (3, 4, 5): 
+                y = page_rect.y0 + margin_y + fontsize
+            else: 
+                y = page_rect.y1 - margin_y
             
+            # Draw white box if checked
             if use_bg:
                 bg_rect = fitz.Rect(x - 5, y - fontsize - 2, x + text_length + 5, y + 5)
                 page.draw_rect(bg_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
 
+            # Insert Text absolutely on top
             page.insert_text((x, y), text, fontsize=fontsize, fontname=fontname, color=color, overlay=True)
             
             final_rotation = original_rotation
@@ -253,6 +262,14 @@ def process_pdf():
     except Exception as e:
         status_label.config(text=t["stat_err"], foreground="red")
         messagebox.showerror(t["msg_err"], str(e))
+
+# --- Mouse Scroll Setup ---
+def _on_mousewheel(event):
+    try:
+        if canvas.bbox("all") and canvas.bbox("all")[3] > canvas.winfo_height():
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+    except Exception:
+        pass
 
 # --- GUI Setup ---
 root = tk.Tk()
@@ -289,12 +306,10 @@ main_paned.pack(fill="both", expand=True, padx=10, pady=5)
 left_frame = ttk.Frame(main_paned)
 main_paned.add(left_frame, weight=1)
 
-right_frame = ttk.LabelFrame(main_paned, text="PDF Preview & Rotation")
+right_frame = ttk.LabelFrame(main_paned, text="PDF Preview & Rotation (Scroll to view all)")
 main_paned.add(right_frame, weight=3)
 
 # -- Left Panel Controls --
-
-# Language Toggle
 lang_frame = tk.Frame(left_frame)
 lang_frame.pack(fill="x", pady=(0, 10))
 lang_label = ttk.Label(lang_frame, text="Language / 语言:")
@@ -304,7 +319,6 @@ lang_dropdown = ttk.Combobox(lang_frame, textvariable=lang_var, state="readonly"
 lang_dropdown.pack(side="left")
 lang_dropdown.bind("<<ComboboxSelected>>", change_language)
 
-# File Selection
 file_frame = ttk.LabelFrame(left_frame, text="1. Select PDF")
 file_frame.pack(fill="x", pady=5)
 input_entry = ttk.Entry(file_frame)
@@ -312,7 +326,6 @@ input_entry.pack(fill="x", padx=10, pady=5)
 browse_btn = ttk.Button(file_frame, text="Browse", command=select_input_file)
 browse_btn.pack(pady=5)
 
-# Page Numbering
 num_frame = ttk.LabelFrame(left_frame, text="2. Page Number Styling")
 num_frame.pack(fill="x", pady=10)
 
@@ -346,7 +359,6 @@ bg_var = tk.BooleanVar(value=False)
 bg_chk = ttk.Checkbutton(num_frame, text="Solid White Box Behind Number\n(Fixes unreadable scanned pages)", variable=bg_var)
 bg_chk.grid(row=4, column=0, columnspan=2, pady=5, padx=5, sticky="w")
 
-# Rotation
 rot_frame = ttk.LabelFrame(left_frame, text="3. Rotation Settings")
 rot_frame.pack(fill="x", pady=10)
 rot_angle_lbl = ttk.Label(rot_frame, text="Checked Angle:")
@@ -355,7 +367,6 @@ rot_angle_var = tk.StringVar(value="90°")
 ttk.Combobox(rot_frame, textvariable=rot_angle_var, state="readonly", width=10,
              values=("90°", "180°", "270°")).grid(row=0, column=1, pady=5)
 
-# Process
 process_btn = tk.Button(left_frame, text="PROCESS & SAVE PDF", command=process_pdf, 
           bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10)
 process_btn.pack(fill="x", pady=15)
@@ -375,6 +386,7 @@ canvas.configure(yscrollcommand=scrollbar.set)
 canvas.pack(side="left", fill="both", expand=True)
 scrollbar.pack(side="right", fill="y")
 
-# Initialize language on startup
+root.bind_all("<MouseWheel>", _on_mousewheel)
+
 change_language()
 root.mainloop()
