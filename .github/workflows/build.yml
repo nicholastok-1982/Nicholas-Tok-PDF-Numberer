@@ -16,10 +16,10 @@ jobs:
         python-version: '3.11'
 
     - name: Install requirements
-      run: pip install pymupdf==1.23.26 pyinstaller
+      run: pip install pymupdf==1.23.26 pyinstaller pillow
 
     - name: Build the EXE
-      run: pyinstaller --onefile --windowed pdf_numberer.py
+      run: pyinstaller --onefile --windowed --add-data "logo.jpg;." pdf_numberer.py
 
     - name: Upload the finished software
       uses: actions/upload-artifact@v4
