@@ -8,6 +8,7 @@ from PIL import Image, ImageTk
 thumbnail_references = []
 checkbox_vars = {}
 checkbox_widgets = {}
+preview_canvases = [] # Stores the canvas data to move the green dots
 
 # --- Translations Dictionary ---
 translations = {
@@ -115,6 +116,8 @@ def change_language(event=None):
 
     for i, chk in checkbox_widgets.items():
         chk.config(text=t["pg_rotate"].format(i+1))
+        
+    update_preview_dots()
 
 def select_input_file():
     filepath = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
@@ -132,6 +135,7 @@ def load_previews(filepath):
     thumbnail_references.clear()
     checkbox_vars.clear()
     checkbox_widgets.clear()
+    preview_canvases.clear()
 
     status_label.config(text=t["stat_loading"], foreground="blue")
     root.update()
@@ -155,8 +159,18 @@ def load_previews(filepath):
             row = (i // columns) * 2
             col = i % columns
 
-            lbl = tk.Label(scrollable_frame, image=photo, bd=1, relief="solid")
-            lbl.grid(row=row, column=col, padx=10, pady=(10, 0))
+            # Create a Canvas instead of a Label so we can draw the green dot
+            thumb_w, thumb_h = img.size
+            canvas_thumb = tk.Canvas(scrollable_frame, width=thumb_w, height=thumb_h, bd=1, relief="solid", highlightthickness=0)
+            canvas_thumb.grid(row=row, column=col, padx=10, pady=(10, 0))
+            canvas_thumb.create_image(0, 0, anchor="nw", image=photo)
+
+            preview_canvases.append({
+                "canvas": canvas_thumb,
+                "width": thumb_w,
+                "height": thumb_h,
+                "dot_id": None
+            })
 
             var = tk.BooleanVar()
             checkbox_vars[i] = var
@@ -166,10 +180,39 @@ def load_previews(filepath):
 
         doc.close()
         status_label.config(text=t["status_ready"], foreground="black")
+        update_preview_dots() # Draw the dots immediately after loading
 
     except Exception as e:
         status_label.config(text=t["stat_err"], foreground="red")
         messagebox.showerror(t["msg_err"], f"Preview Error:\n{str(e)}")
+
+def update_preview_dots(*args):
+    """Draws or moves the green dot on every preview based on dropdown selection"""
+    pos_idx = pos_dropdown.current()
+    if pos_idx < 0: pos_idx = 1 # Default to Bottom Center
+    
+    dot_radius = 5
+    margin = 8 # Scaled margin for the tiny thumbnail
+    
+    for item in preview_canvases:
+        c = item["canvas"]
+        w = item["width"]
+        h = item["height"]
+        
+        # Calculate X
+        if pos_idx in (0, 3): x = margin
+        elif pos_idx in (2, 5): x = w - margin
+        else: x = w / 2
+            
+        # Calculate Y
+        if pos_idx in (3, 4, 5): y = margin
+        else: y = h - margin
+        
+        # Draw or move the dot
+        if item["dot_id"] is None:
+            item["dot_id"] = c.create_oval(x-dot_radius, y-dot_radius, x+dot_radius, y+dot_radius, fill="#00FF00", outline="black", width=1)
+        else:
+            c.coords(item["dot_id"], x-dot_radius, y-dot_radius, x+dot_radius, y+dot_radius)
 
 def process_pdf():
     lang_code = "EN" if lang_var.get() == "English" else "CN"
@@ -210,8 +253,6 @@ def process_pdf():
         for page_num in range(total_pages):
             page = doc[page_num]
             
-            # --- MAGIC FIX FOR QC LAB PDFs ---
-            # 1. "Seal" the page contents to stop transparent layers & clipping paths from hiding the text
             page.wrap_contents()
             
             original_rotation = page.rotation
@@ -220,13 +261,11 @@ def process_pdf():
             text = f"Page {page_num + 1} of {total_pages}"
             text_length = fitz.get_text_length(text, fontname=fontname, fontsize=fontsize)
             
-            # 2. Use CropBox instead of Rect to guarantee we don't print in a scanner's hidden margin
             page_rect = page.cropbox 
             
             margin_x = 30
             margin_y = 30
             
-            # Calculate X (Left, Center, Right) using strict CropBox boundaries
             if pos_idx in (0, 3): 
                 x = page_rect.x0 + margin_x
             elif pos_idx in (2, 5): 
@@ -234,18 +273,15 @@ def process_pdf():
             else: 
                 x = page_rect.x0 + (page_rect.width / 2) - (text_length / 2)
                 
-            # Calculate Y (Top, Bottom) using strict CropBox boundaries
             if pos_idx in (3, 4, 5): 
                 y = page_rect.y0 + margin_y + fontsize
             else: 
                 y = page_rect.y1 - margin_y
             
-            # Draw white box if checked
             if use_bg:
                 bg_rect = fitz.Rect(x - 5, y - fontsize - 2, x + text_length + 5, y + 5)
                 page.draw_rect(bg_rect, color=(1,1,1), fill=(1,1,1), overlay=True)
 
-            # Insert Text absolutely on top
             page.insert_text((x, y), text, fontsize=fontsize, fontname=fontname, color=color, overlay=True)
             
             final_rotation = original_rotation
@@ -342,6 +378,8 @@ pos_var = tk.StringVar(value="Bottom Center")
 pos_dropdown = ttk.Combobox(num_frame, textvariable=pos_var, state="readonly", width=17,
              values=("Bottom Left", "Bottom Center", "Bottom Right", "Top Left", "Top Center", "Top Right"))
 pos_dropdown.grid(row=1, column=1, pady=5)
+# BIND THE DROPDOWN TO MOVE THE GREEN DOTS INSTANTLY
+pos_dropdown.bind("<<ComboboxSelected>>", update_preview_dots)
 
 size_lbl = ttk.Label(num_frame, text="Size:")
 size_lbl.grid(row=2, column=0, padx=5, pady=5, sticky="e")
