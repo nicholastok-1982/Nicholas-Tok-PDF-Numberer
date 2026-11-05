@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinterdnd2 import TkinterDnD, DND_FILES
 import fitz  # PyMuPDF library
 import os
 import sys
@@ -19,7 +20,7 @@ translations = {
         "tab_merge": "2. Merge & Mix",
         "tab_split": "3. Split & Extract",
         # Tab 1
-        "frame1": "Select PDF",
+        "frame1": "Select PDF (or Drag & Drop anywhere)",
         "browse": "Browse",
         "frame2": "Page Number Styling",
         "font": "Font:",
@@ -41,9 +42,9 @@ translations = {
         "move_down": "Move Down",
         "merge_btn": "MERGE PDFs",
         "mix_btn": "ALTERNATE MIX (Requires 2 PDFs)",
-        "merge_lbl": "Add files in the order you want them merged:",
+        "merge_lbl": "Add files in order (or Drag & Drop multiple here):",
         # Tab 3
-        "split_file": "Select File to Split/Extract:",
+        "split_file": "Select File to Split/Extract (or Drag & Drop):",
         "mode_extract": "Extract / Duplicate Pages (e.g., 1-5, 8, 9, 9, 9):",
         "mode_split_n": "Split after every X pages:",
         "mode_split_bm": "Split by Bookmarks",
@@ -68,7 +69,7 @@ translations = {
         "tab_merge": "2. 合并与交替",
         "tab_split": "3. 拆分与提取",
         # Tab 1
-        "frame1": "选择 PDF 文件",
+        "frame1": "选择 PDF 文件 (或直接拖放至此)",
         "browse": "浏览",
         "frame2": "页码样式",
         "font": "字体：",
@@ -90,9 +91,9 @@ translations = {
         "move_down": "下移",
         "merge_btn": "合并 PDF",
         "mix_btn": "交替合并 (需2个PDF)",
-        "merge_lbl": "按需要合并的顺序添加文件：",
+        "merge_lbl": "按合并顺序添加文件 (或直接拖放多个文件):",
         # Tab 3
-        "split_file": "选择要拆分/提取的文件：",
+        "split_file": "选择要拆分/提取的文件 (或直接拖放):",
         "mode_extract": "提取/复制页码 (如: 1-5, 8, 9, 9):",
         "mode_split_n": "按页数拆分 (每 X 页):",
         "mode_split_bm": "按书签 (Bookmarks) 拆分",
@@ -125,12 +126,10 @@ def change_language(event=None):
     name_label.config(text=t["name_label"])
     lang_label.config(text=t["lang"])
     
-    # Tabs
     notebook.tab(tab1_frame, text=t["tab_number"])
     notebook.tab(tab2_frame, text=t["tab_merge"])
     notebook.tab(tab3_frame, text=t["tab_split"])
 
-    # Tab 1
     file_frame.config(text=t["frame1"])
     browse_btn.config(text=t["browse"])
     num_frame.config(text=t["frame2"])
@@ -155,7 +154,6 @@ def change_language(event=None):
     for i, chk in checkbox_widgets.items():
         chk.config(text=t["pg_rotate"].format(i+1))
 
-    # Tab 2
     merge_lbl.config(text=t["merge_lbl"])
     btn_add_merge.config(text=t["add_files"])
     btn_rem_merge.config(text=t["remove_files"])
@@ -164,7 +162,6 @@ def change_language(event=None):
     btn_do_merge.config(text=t["merge_btn"])
     btn_do_mix.config(text=t["mix_btn"])
 
-    # Tab 3
     split_file_lbl.config(text=t["split_file"])
     split_browse_btn.config(text=t["browse"])
     rb_ext.config(text=t["mode_extract"])
@@ -180,6 +177,32 @@ def update_status(msg, color="black"):
     status_lbl_2.config(text=msg, foreground=color)
     status_lbl_3.config(text=msg, foreground=color)
     root.update()
+
+# ================= DRAG AND DROP HANDLER =================
+def handle_drop(event):
+    # Parse dropped files safely
+    dropped_files = root.tk.splitlist(event.data)
+    pdf_files = [f for f in dropped_files if f.lower().endswith('.pdf')]
+    
+    if not pdf_files:
+        return
+
+    current_tab = notebook.index(notebook.select())
+    
+    if current_tab == 0:  # Numbering Tab
+        filepath = pdf_files[0]
+        input_entry.delete(0, tk.END)
+        input_entry.insert(0, filepath)
+        load_previews(filepath)
+        
+    elif current_tab == 1:  # Merge Tab
+        for f in pdf_files:
+            merge_listbox.insert(tk.END, f)
+            
+    elif current_tab == 2:  # Split Tab
+        filepath = pdf_files[0]
+        split_entry.delete(0, tk.END)
+        split_entry.insert(0, filepath)
 
 # ================= TAB 1: Numbering & Preview =================
 def select_input_file():
@@ -394,7 +417,6 @@ def process_split():
         base_name = os.path.splitext(os.path.basename(in_pdf))[0]
         
         if mode == "extract":
-            # Extract to single file
             out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title=t["save_as"])
             if not out_file: return
             update_status(t["stat_loading"], "blue")
@@ -416,7 +438,6 @@ def process_split():
             out_doc.close()
 
         else:
-            # Splitting modes: requires directory
             out_dir = filedialog.askdirectory(title=t["save_dir"])
             if not out_dir: return
             update_status(t["stat_loading"], "blue")
@@ -454,11 +475,10 @@ def process_split():
                 part = 1
                 for p in range(len(doc)):
                     out_doc.insert_pdf(doc, from_page=p, to_page=p)
-                    # Checking size dynamically
                     if len(out_doc.tobytes(garbage=4)) >= target_bytes and out_doc.page_count > 1:
                         out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf"))
                         out_doc.close()
-                        out_doc = fitz.open() # Fresh start with next page
+                        out_doc = fitz.open() 
                         part += 1
                 
                 if out_doc.page_count > 0:
@@ -475,19 +495,24 @@ def process_split():
 
 # ================= MOUSE SCROLL (TAB 1) =================
 def _on_mousewheel(event):
-    if notebook.index(notebook.select()) != 0: return # Only scroll if Tab 1
+    if notebook.index(notebook.select()) != 0: return
     try:
         if scrollable_frame.winfo_height() > canvas.winfo_height():
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
     except Exception: pass
 
 # ================= GUI CONSTRUCTION =================
-root = tk.Tk()
+# Use TkinterDnD.Tk() instead of standard tk.Tk() to enable Drag and Drop
+root = TkinterDnD.Tk()
 root.title("STA Singapore QC - PDF Workstation")
 root.geometry("1100x750")
 root.eval('tk::PlaceWindow . center')
 style = ttk.Style(root)
 style.theme_use('clam')
+
+# REGISTER ENTIRE WINDOW AS DROP TARGET
+root.drop_target_register(DND_FILES)
+root.dnd_bind('<<Drop>>', handle_drop)
 
 # HEADER
 header_frame = tk.Frame(root, bg="#ffffff", bd=2, relief="groove")
@@ -535,7 +560,7 @@ t1_paned.add(left_frame, weight=1)
 right_frame = ttk.LabelFrame(t1_paned, text="PDF Preview")
 t1_paned.add(right_frame, weight=3)
 
-file_frame = ttk.LabelFrame(left_frame, text="Select PDF")
+file_frame = ttk.LabelFrame(left_frame, text="Select PDF (or Drag & Drop anywhere)")
 file_frame.pack(fill="x", pady=5)
 input_entry = ttk.Entry(file_frame)
 input_entry.pack(fill="x", padx=10, pady=5)
@@ -562,7 +587,7 @@ color_dropdown = ttk.Combobox(num_frame, state="readonly", width=17, values=("Bl
 color_dropdown.current(0); color_dropdown.grid(row=3, column=1, pady=5)
 
 bg_var = tk.BooleanVar(value=False)
-bg_chk = ttk.Checkbutton(num_frame, text="Solid White Box", variable=bg_var)
+bg_chk = ttk.Checkbutton(num_frame, text="Solid White Box Behind Number", variable=bg_var)
 bg_chk.grid(row=4, column=0, columnspan=2, pady=5, padx=5, sticky="w")
 
 rot_frame = ttk.LabelFrame(left_frame, text="Rotation Settings")
@@ -572,7 +597,7 @@ rot_angle_lbl.grid(row=0, column=0, padx=5, pady=5, sticky="e")
 rot_angle_var = tk.StringVar(value="90°")
 ttk.Combobox(rot_frame, textvariable=rot_angle_var, state="readonly", width=10, values=("90°", "180°", "270°")).grid(row=0, column=1, pady=5)
 
-process_btn = tk.Button(left_frame, text="PROCESS CA PDF", command=process_numbering, bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10)
+process_btn = tk.Button(left_frame, text="PROCESS & SAVE", command=process_numbering, bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10)
 process_btn.pack(fill="x", pady=10)
 status_lbl_1 = ttk.Label(left_frame, text="Status: Ready", font=("Arial", 10, "bold"))
 status_lbl_1.pack()
@@ -590,7 +615,7 @@ root.bind_all("<MouseWheel>", _on_mousewheel)
 # ========== TAB 2 UI ==========
 t2_center = tk.Frame(tab2_frame)
 t2_center.pack(pady=30)
-merge_lbl = ttk.Label(t2_center, text="Add files in the order:", font=("Arial", 11, "bold"))
+merge_lbl = ttk.Label(t2_center, text="Add files in order (or Drag & Drop multiple here):", font=("Arial", 11, "bold"))
 merge_lbl.pack(anchor="w")
 
 listbox_frame = tk.Frame(t2_center)
@@ -605,7 +630,7 @@ btn_frame_2 = tk.Frame(t2_center)
 btn_frame_2.pack(fill="x", pady=10)
 btn_add_merge = ttk.Button(btn_frame_2, text="Add PDFs", command=t2_add)
 btn_add_merge.grid(row=0, column=0, padx=5)
-btn_rem_merge = ttk.Button(btn_frame_2, text="Remove", command=t2_rem)
+btn_rem_merge = ttk.Button(btn_frame_2, text="Remove Selected", command=t2_rem)
 btn_rem_merge.grid(row=0, column=1, padx=5)
 btn_up_merge = ttk.Button(btn_frame_2, text="Move Up", command=t2_up)
 btn_up_merge.grid(row=0, column=2, padx=5)
@@ -623,7 +648,7 @@ status_lbl_2.pack(pady=10)
 t3_center = tk.Frame(tab3_frame)
 t3_center.pack(pady=30, padx=50, fill="x")
 
-split_file_lbl = ttk.Label(t3_center, text="Select File:", font=("Arial", 11, "bold"))
+split_file_lbl = ttk.Label(t3_center, text="Select File to Split/Extract (or Drag & Drop):", font=("Arial", 11, "bold"))
 split_file_lbl.pack(anchor="w")
 t3_f = tk.Frame(t3_center)
 t3_f.pack(fill="x", pady=5)
@@ -639,7 +664,7 @@ split_mode_var = tk.StringVar(value="extract")
 
 f_ext = tk.Frame(modes_frame)
 f_ext.pack(fill="x", pady=5)
-rb_ext = ttk.Radiobutton(f_ext, text="Extract/Duplicate (e.g. 1-5, 8, 9, 9):", variable=split_mode_var, value="extract")
+rb_ext = ttk.Radiobutton(f_ext, text="Extract/Duplicate Pages (e.g. 1-5, 8, 9, 9):", variable=split_mode_var, value="extract")
 rb_ext.pack(side="left")
 split_ext_val = ttk.Entry(f_ext, width=20); split_ext_val.pack(side="left", padx=10)
 split_ext_val.insert(0, "1-3, 5")
@@ -658,7 +683,7 @@ rb_bm.pack(side="left")
 
 f_sz = tk.Frame(modes_frame)
 f_sz.pack(fill="x", pady=5)
-rb_size = ttk.Radiobutton(f_sz, text="Split by Target Size (MB):", variable=split_mode_var, value="size")
+rb_size = ttk.Radiobutton(f_sz, text="Split by Target Size (MB) - approximate:", variable=split_mode_var, value="size")
 rb_size.pack(side="left")
 split_sz_val = ttk.Entry(f_sz, width=10); split_sz_val.pack(side="left", padx=10)
 split_sz_val.insert(0, "10")
