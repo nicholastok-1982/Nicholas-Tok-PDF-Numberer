@@ -5,6 +5,7 @@ import fitz  # PyMuPDF library
 import os
 import sys
 from PIL import Image, ImageTk
+from pdf2docx import Converter # New PDF to Word Library
 
 thumbnail_references = []
 checkbox_vars = {}
@@ -54,15 +55,18 @@ translations = {
         # Tab 4 (Premium)
         "prem_lock_msg": "RESTRICTED ACCESS\nEnter developer access code to unlock Premium Functions:",
         "prem_unlock_btn": "UNLOCK",
-        "prem_f1_title": "Premium Feature: Remove PDF Restrictions (Unlock Copy/Highlight)",
+        "prem_f1_title": "Premium #1: Remove PDF Restrictions (Unlock Copy/Highlight)",
         "prem_f1_btn": "STRIP RESTRICTIONS & SAVE",
+        "prem_f2_title": "Premium #2: Digital PDF to Word (DOCx) Converter",
+        "prem_f2_desc": "*Note: Works for digital PDFs. Flat scanned images will not convert to editable text.",
+        "prem_f2_btn": "CONVERT TO WORD & SAVE",
         # Status/Messages
         "stat_ready": "Status: Ready",
         "stat_loading": "Status: Working... please wait.",
         "stat_success": "Status: Finished successfully!",
         "stat_err": "Status: Error occurred.",
         "err_no_pdf": "Please select a valid PDF file.",
-        "save_as": "Save New PDF As...",
+        "save_as": "Save As...",
         "save_dir": "Select Folder to Save Split Files",
         "msg_success": "Operation completed successfully!",
         "msg_err": "Error",
@@ -109,16 +113,19 @@ translations = {
         # Tab 4
         "prem_lock_msg": "受限访问\n请输入开发者访问代码以解锁高级功能：",
         "prem_unlock_btn": "解锁",
-        "prem_f1_title": "高级功能: 移除 PDF 限制 (解锁复制/高亮)",
+        "prem_f1_title": "高级 #1: 移除 PDF 限制 (解锁复制/高亮)",
         "prem_f1_btn": "移除限制并保存",
+        "prem_f2_title": "高级 #2: 数字 PDF 转 Word (DOCx) 转换器",
+        "prem_f2_desc": "*注: 仅适用于数字PDF。扁平扫描件无法转换为可编辑文本。",
+        "prem_f2_btn": "转换为 WORD 并保存",
         # Status/Messages
         "stat_ready": "状态：就绪",
         "stat_loading": "状态：正在处理... 请稍候。",
         "stat_success": "状态：处理成功！",
         "stat_err": "状态：发生错误。",
         "err_no_pdf": "请选择有效的 PDF 文件。",
-        "save_as": "另存新 PDF 为...",
-        "save_dir": "选择保存拆分文件的文件夹",
+        "save_as": "另存为...",
+        "save_dir": "选择保存文件夹",
         "msg_success": "操作成功完成！",
         "msg_err": "错误",
         "pg_rotate": "第 {0} 页 旋转"
@@ -141,7 +148,6 @@ def change_language(event=None):
     notebook.tab(tab3_frame, text=t["tab_split"])
     notebook.tab(tab4_frame, text=t["tab_prem"])
 
-    # Tab 1
     file_frame.config(text=t["frame1"])
     browse_btn.config(text=t["browse"])
     num_frame.config(text=t["frame2"])
@@ -162,7 +168,6 @@ def change_language(event=None):
     color_dropdown.current(col_idx if col_idx >= 0 else 0)
     for i, chk in checkbox_widgets.items(): chk.config(text=t["pg_rotate"].format(i+1))
 
-    # Tab 2
     merge_lbl.config(text=t["merge_lbl"])
     btn_add_merge.config(text=t["add_files"])
     btn_rem_merge.config(text=t["remove_files"])
@@ -171,7 +176,6 @@ def change_language(event=None):
     btn_do_merge.config(text=t["merge_btn"])
     btn_do_mix.config(text=t["mix_btn"])
 
-    # Tab 3
     split_file_lbl.config(text=t["split_file"])
     split_browse_btn.config(text=t["browse"])
     rb_ext.config(text=t["mode_extract"])
@@ -180,11 +184,13 @@ def change_language(event=None):
     rb_size.config(text=t["mode_split_size"])
     btn_do_split.config(text=t["split_btn"])
 
-    # Tab 4
     prem_lock_lbl.config(text=t["prem_lock_msg"])
     prem_unlock_btn.config(text=t["prem_unlock_btn"])
     prem_f1_lbl.config(text=t["prem_f1_title"])
     btn_do_unlock.config(text=t["prem_f1_btn"])
+    prem_f2_lbl.config(text=t["prem_f2_title"])
+    prem_f2_desc.config(text=t["prem_f2_desc"])
+    btn_do_word.config(text=t["prem_f2_btn"])
 
     update_status(t["stat_ready"], "black")
 
@@ -228,7 +234,6 @@ def load_previews(filepath):
     for widget in scrollable_frame.winfo_children(): widget.destroy()
     thumbnail_references.clear(); checkbox_vars.clear(); checkbox_widgets.clear(); preview_canvases.clear()
     update_status(t["stat_loading"], "blue")
-
     try:
         doc = fitz.open(filepath)
         total_pages = len(doc)
@@ -240,25 +245,21 @@ def load_previews(filepath):
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             photo = ImageTk.PhotoImage(img)
             thumbnail_references.append(photo)
-
             row, col = (i // columns) * 2, i % columns
             canvas_thumb = tk.Canvas(scrollable_frame, width=img.width, height=img.height, bd=1, relief="solid", highlightthickness=0)
             canvas_thumb.grid(row=row, column=col, padx=10, pady=(10, 0))
             canvas_thumb.create_image(0, 0, anchor="nw", image=photo)
-
             preview_canvases.append({"canvas": canvas_thumb, "width": img.width, "height": img.height, "dot_id": None})
             var = tk.BooleanVar()
             checkbox_vars[i] = var
             chk = ttk.Checkbutton(scrollable_frame, text=t["pg_rotate"].format(i+1), variable=var)
             chk.grid(row=row+1, column=col, pady=(0, 10))
             checkbox_widgets[i] = chk
-
         doc.close()
         update_status(t["stat_ready"])
         update_preview_dots()
     except Exception as e:
-        update_status(t["stat_err"], "red")
-        messagebox.showerror(t["msg_err"], str(e))
+        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
 def update_preview_dots(*args):
     pos_idx = pos_dropdown.current()
@@ -281,7 +282,6 @@ def process_numbering():
     output_pdf = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title=t["save_as"])
     if not output_pdf: return
     update_status(t["stat_loading"], "blue")
-
     try:
         fontsize = int(size_var.get())
         use_bg = bg_var.get()
@@ -306,18 +306,14 @@ def process_numbering():
             else: x = rect.x0 + (rect.width / 2) - (text_len / 2)
             if pos_idx in (3, 4, 5): y = rect.y0 + my + fontsize
             else: y = rect.y1 - my
-            if use_bg:
-                page.draw_rect(fitz.Rect(x-5, y-fontsize-2, x+text_len+5, y+5), color=(1,1,1), fill=(1,1,1), overlay=True)
+            if use_bg: page.draw_rect(fitz.Rect(x-5, y-fontsize-2, x+text_len+5, y+5), color=(1,1,1), fill=(1,1,1), overlay=True)
             page.insert_text((x, y), text, fontsize=fontsize, fontname=fontname, color=color, overlay=True)
             if p in checkbox_vars and checkbox_vars[p].get(): orig_rot += rot_angle
             page.set_rotation(orig_rot)
-        doc.save(output_pdf)
-        doc.close()
-        update_status(t["stat_success"], "green")
-        messagebox.showinfo(t["app_title"], t["msg_success"])
+        doc.save(output_pdf); doc.close()
+        update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e:
-        update_status(t["stat_err"], "red")
-        messagebox.showerror(t["msg_err"], str(e))
+        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
 # ================= TAB 2 & 3 FUNCTIONS =================
 def t2_add():
@@ -338,15 +334,14 @@ def process_merge():
     t = translations["EN" if lang_var.get() == "English" else "CN"]
     files = merge_listbox.get(0, tk.END)
     if len(files) < 2: return messagebox.showerror(t["msg_err"], "Please add at least 2 PDFs.")
-    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
+    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title=t["save_as"])
     if not out_file: return
     update_status(t["stat_loading"], "blue")
     try:
         out_doc = fitz.open()
         for f in files: doc = fitz.open(f); out_doc.insert_pdf(doc); doc.close()
         out_doc.save(out_file); out_doc.close()
-        update_status(t["stat_success"], "green")
-        messagebox.showinfo(t["app_title"], t["msg_success"])
+        update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e:
         update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
@@ -354,7 +349,7 @@ def process_mix():
     t = translations["EN" if lang_var.get() == "English" else "CN"]
     files = merge_listbox.get(0, tk.END)
     if len(files) != 2: return messagebox.showerror(t["msg_err"], "Alternate Mix requires exactly 2 PDFs.")
-    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
+    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title=t["save_as"])
     if not out_file: return
     update_status(t["stat_loading"], "blue")
     try:
@@ -363,8 +358,7 @@ def process_mix():
             if i < len(doc1): out_doc.insert_pdf(doc1, from_page=i, to_page=i)
             if i < len(doc2): out_doc.insert_pdf(doc2, from_page=i, to_page=i)
         out_doc.save(out_file); doc1.close(); doc2.close(); out_doc.close()
-        update_status(t["stat_success"], "green")
-        messagebox.showinfo(t["app_title"], t["msg_success"])
+        update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e:
         update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
@@ -424,14 +418,13 @@ def process_split():
                 if out_doc.page_count > 0: out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf"))
                 out_doc.close()
         doc.close()
-        update_status(t["stat_success"], "green")
-        messagebox.showinfo(t["app_title"], t["msg_success"])
+        update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e:
         update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
 # ================= TAB 4: PREMIUM TOOLS =================
 def unlock_premium():
-    if prem_pass_entry.get() == "11066547":
+    if prem_pass_entry.get() == "nicholas_tokismosthandsome":
         prem_lock_frame.pack_forget()
         prem_content_frame.pack(fill="both", expand=True)
     else:
@@ -445,16 +438,37 @@ def process_unlock():
     t = translations["EN" if lang_var.get() == "English" else "CN"]
     in_pdf = prem_f1_entry.get()
     if not os.path.exists(in_pdf): return messagebox.showerror(t["msg_err"], t["err_no_pdf"])
-    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
+    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title=t["save_as"])
     if not out_file: return
     update_status(t["stat_loading"], "blue")
     try:
         doc = fitz.open(in_pdf)
-        if doc.is_encrypted: doc.authenticate("") # Attempts to bypass owner restriction
-        doc.save(out_file, encryption=fitz.PDF_ENCRYPT_NONE) # Strip all restrictions
+        if doc.is_encrypted: doc.authenticate("") 
+        doc.save(out_file, encryption=fitz.PDF_ENCRYPT_NONE) 
         doc.close()
         update_status(t["stat_success"], "green")
         messagebox.showinfo(t["app_title"], "PDF Restrictions Successfully Removed!")
+    except Exception as e:
+        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
+
+def process_pdf2word():
+    t = translations["EN" if lang_var.get() == "English" else "CN"]
+    in_pdf = prem_f1_entry.get()
+    if not os.path.exists(in_pdf): return messagebox.showerror(t["msg_err"], t["err_no_pdf"])
+    out_file = filedialog.asksaveasfilename(defaultextension=".docx", filetypes=[("Word Document", "*.docx")], title=t["save_as"])
+    if not out_file: return
+    update_status("Status: Converting to Word... This may take a moment.", "blue")
+    
+    # We run the heavy conversion process
+    try:
+        # Update UI before heavy processing blocks the main thread
+        root.update() 
+        cv = Converter(in_pdf)
+        cv.convert(out_file, start=0, end=None)
+        cv.close()
+        
+        update_status(t["stat_success"], "green")
+        messagebox.showinfo(t["app_title"], "Successfully converted to Word Document (DOCx)!")
     except Exception as e:
         update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
@@ -573,8 +587,7 @@ scrollbar.pack(side="right", fill="y")
 root.bind_all("<MouseWheel>", _on_mousewheel)
 
 # ========== TAB 2 UI ==========
-t2_center = tk.Frame(tab2_frame)
-t2_center.pack(pady=30)
+t2_center = tk.Frame(tab2_frame); t2_center.pack(pady=30)
 merge_lbl = ttk.Label(t2_center, text="Add files in order (or Drag & Drop multiple here):", font=("Arial", 11, "bold"))
 merge_lbl.pack(anchor="w")
 
@@ -641,7 +654,7 @@ prem_pass_entry.pack(pady=10)
 prem_unlock_btn = tk.Button(prem_lock_frame, text="UNLOCK", command=unlock_premium, bg="#FFC107", font=("Arial", 11, "bold"), width=15)
 prem_unlock_btn.pack(pady=10)
 
-prem_content_frame = tk.Frame(tab4_frame) # Hidden by default
+prem_content_frame = tk.Frame(tab4_frame)
 
 t4_f = tk.Frame(prem_content_frame); t4_f.pack(fill="x", padx=50, pady=20)
 ttk.Label(t4_f, text="Select Target PDF (or Drag & Drop):", font=("Arial", 10, "bold")).pack(anchor="w")
@@ -649,11 +662,19 @@ f_br = tk.Frame(t4_f); f_br.pack(fill="x", pady=5)
 prem_f1_entry = ttk.Entry(f_br, width=70); prem_f1_entry.pack(side="left")
 ttk.Button(f_br, text="Browse", command=t4_sel).pack(side="left", padx=10)
 
-f1_box = ttk.LabelFrame(prem_content_frame, text="PDF Restriction Remover"); f1_box.pack(fill="x", padx=50, pady=10, ipady=10)
-prem_f1_lbl = ttk.Label(f1_box, text="Premium Feature: Remove PDF Restrictions (Unlock Copy/Highlight)", font=("Arial", 11, "bold"))
+f1_box = ttk.LabelFrame(prem_content_frame, text="Function 1"); f1_box.pack(fill="x", padx=50, pady=10, ipady=10)
+prem_f1_lbl = ttk.Label(f1_box, text="Premium #1: Remove PDF Restrictions (Unlock Copy/Highlight)", font=("Arial", 11, "bold"))
 prem_f1_lbl.pack(pady=10)
 btn_do_unlock = tk.Button(f1_box, text="STRIP RESTRICTIONS & SAVE", command=process_unlock, bg="#28A745", fg="white", font=("Arial", 11, "bold"), pady=5, width=30)
 btn_do_unlock.pack()
+
+f2_box = ttk.LabelFrame(prem_content_frame, text="Function 2"); f2_box.pack(fill="x", padx=50, pady=10, ipady=10)
+prem_f2_lbl = ttk.Label(f2_box, text="Premium #2: Digital PDF to Word (DOCx) Converter", font=("Arial", 11, "bold"))
+prem_f2_lbl.pack(pady=5)
+prem_f2_desc = ttk.Label(f2_box, text="*Note: Works for digital PDFs. Flat scanned images will not convert to editable text.", font=("Arial", 9, "italic"), foreground="gray")
+prem_f2_desc.pack(pady=5)
+btn_do_word = tk.Button(f2_box, text="CONVERT TO WORD & SAVE", command=process_pdf2word, bg="#17A2B8", fg="white", font=("Arial", 11, "bold"), pady=5, width=30)
+btn_do_word.pack(pady=10)
 
 status_lbl_4 = ttk.Label(prem_content_frame, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_4.pack(pady=10)
 
