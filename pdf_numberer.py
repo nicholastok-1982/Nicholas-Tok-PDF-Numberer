@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
+from tkinterdnd2 import TkinterDnD, DND_FILES
 import fitz  # PyMuPDF library
 import os
 import sys
@@ -18,8 +19,9 @@ translations = {
         "tab_number": "1. Numbering & Rotate",
         "tab_merge": "2. Merge & Mix",
         "tab_split": "3. Split & Extract",
+        "tab_prem": "👑 Premium Tools",
         # Tab 1
-        "frame1": "Select PDF",
+        "frame1": "Select PDF (or Drag & Drop anywhere)",
         "browse": "Browse",
         "frame2": "Page Number Styling",
         "font": "Font:",
@@ -41,14 +43,23 @@ translations = {
         "move_down": "Move Down",
         "merge_btn": "MERGE PDFs",
         "mix_btn": "ALTERNATE MIX (Requires 2 PDFs)",
-        "merge_lbl": "Add files in the order you want them merged:",
+        "merge_lbl": "Add files in order (or Drag & Drop multiple here):",
         # Tab 3
-        "split_file": "Select File to Split/Extract:",
+        "split_file": "Select File to Split/Extract (or Drag & Drop):",
         "mode_extract": "Extract / Duplicate Pages (e.g., 1-5, 8, 9, 9, 9):",
         "mode_split_n": "Split after every X pages:",
         "mode_split_bm": "Split by Bookmarks",
-        "mode_split_size": "Split by Target Size (MB) - approximate:",
+        "mode_split_size": "Split by Target Size (MB) - approx:",
         "split_btn": "EXECUTE SPLIT / EXTRACT",
+        # Tab 4 (Premium)
+        "prem_lock_msg": "RESTRICTED ACCESS\nEnter developer access code to unlock Premium Functions:",
+        "prem_unlock_btn": "UNLOCK",
+        "prem_f1_title": "Premium #1: Remove PDF Restrictions (Unlock Copy/Highlight)",
+        "prem_f1_btn": "STRIP RESTRICTIONS & SAVE",
+        "prem_f2_title": "Premium #2: Pro QC Stamper / Watermark",
+        "prem_f2_txt": "Text to Stamp:",
+        "prem_f2_op": "Opacity:",
+        "prem_f2_btn": "APPLY STAMP & SAVE",
         # Status/Messages
         "stat_ready": "Status: Ready",
         "stat_loading": "Status: Working... please wait.",
@@ -67,15 +78,16 @@ translations = {
         "tab_number": "1. 页码与旋转",
         "tab_merge": "2. 合并与交替",
         "tab_split": "3. 拆分与提取",
+        "tab_prem": "👑 高级工具 (Premium)",
         # Tab 1
-        "frame1": "选择 PDF 文件",
+        "frame1": "选择 PDF 文件 (或直接拖放至此)",
         "browse": "浏览",
         "frame2": "页码样式",
         "font": "字体：",
         "position": "位置：",
         "size": "大小：",
         "color": "颜色：",
-        "bg_chk": "页码添加纯白背景框 (修复扫描件)",
+        "bg_chk": "页码添加纯白背景框",
         "frame3": "旋转设置",
         "rot_angle": "勾选页旋转角度：",
         "process": "处理并保存",
@@ -90,14 +102,23 @@ translations = {
         "move_down": "下移",
         "merge_btn": "合并 PDF",
         "mix_btn": "交替合并 (需2个PDF)",
-        "merge_lbl": "按需要合并的顺序添加文件：",
+        "merge_lbl": "按合并顺序添加文件 (或拖放多个文件):",
         # Tab 3
-        "split_file": "选择要拆分/提取的文件：",
+        "split_file": "选择文件 (或拖放):",
         "mode_extract": "提取/复制页码 (如: 1-5, 8, 9, 9):",
         "mode_split_n": "按页数拆分 (每 X 页):",
         "mode_split_bm": "按书签 (Bookmarks) 拆分",
         "mode_split_size": "按目标大小 (MB) 拆分 - 估算:",
         "split_btn": "执行拆分 / 提取",
+        # Tab 4
+        "prem_lock_msg": "受限访问\n请输入开发者访问代码以解锁高级功能：",
+        "prem_unlock_btn": "解锁",
+        "prem_f1_title": "高级 #1: 移除 PDF 限制 (解锁复制/高亮)",
+        "prem_f1_btn": "移除限制并保存",
+        "prem_f2_title": "高级 #2: 专业 QC 印章 / 水印",
+        "prem_f2_txt": "印章文字:",
+        "prem_f2_op": "不透明度:",
+        "prem_f2_btn": "应用印章并保存",
         # Status/Messages
         "stat_ready": "状态：就绪",
         "stat_loading": "状态：正在处理... 请稍候。",
@@ -113,10 +134,8 @@ translations = {
 }
 
 def resource_path(relative_path):
-    try:
-        base_path = sys._MEIPASS
-    except Exception:
-        base_path = os.path.abspath(".")
+    try: base_path = sys._MEIPASS
+    except Exception: base_path = os.path.abspath(".")
     return os.path.join(base_path, relative_path)
 
 def change_language(event=None):
@@ -125,10 +144,10 @@ def change_language(event=None):
     name_label.config(text=t["name_label"])
     lang_label.config(text=t["lang"])
     
-    # Tabs
     notebook.tab(tab1_frame, text=t["tab_number"])
     notebook.tab(tab2_frame, text=t["tab_merge"])
     notebook.tab(tab3_frame, text=t["tab_split"])
+    notebook.tab(tab4_frame, text=t["tab_prem"])
 
     # Tab 1
     file_frame.config(text=t["frame1"])
@@ -143,17 +162,13 @@ def change_language(event=None):
     rot_angle_lbl.config(text=t["rot_angle"])
     process_btn.config(text=t["process"])
     right_frame.config(text=t["preview_frame"])
-
     pos_idx = pos_dropdown.current()
     pos_dropdown['values'] = t["positions"]
     pos_dropdown.current(pos_idx if pos_idx >= 0 else 1)
-
     col_idx = color_dropdown.current()
     color_dropdown['values'] = t["colors"]
     color_dropdown.current(col_idx if col_idx >= 0 else 0)
-
-    for i, chk in checkbox_widgets.items():
-        chk.config(text=t["pg_rotate"].format(i+1))
+    for i, chk in checkbox_widgets.items(): chk.config(text=t["pg_rotate"].format(i+1))
 
     # Tab 2
     merge_lbl.config(text=t["merge_lbl"])
@@ -173,13 +188,44 @@ def change_language(event=None):
     rb_size.config(text=t["mode_split_size"])
     btn_do_split.config(text=t["split_btn"])
 
+    # Tab 4
+    prem_lock_lbl.config(text=t["prem_lock_msg"])
+    prem_unlock_btn.config(text=t["prem_unlock_btn"])
+    prem_f1_lbl.config(text=t["prem_f1_title"])
+    btn_do_unlock.config(text=t["prem_f1_btn"])
+    prem_f2_lbl.config(text=t["prem_f2_title"])
+    prem_f2_txt_lbl.config(text=t["prem_f2_txt"])
+    prem_f2_op_lbl.config(text=t["prem_f2_op"])
+    btn_do_stamp.config(text=t["prem_f2_btn"])
+
     update_status(t["stat_ready"], "black")
 
 def update_status(msg, color="black"):
     status_lbl_1.config(text=msg, foreground=color)
     status_lbl_2.config(text=msg, foreground=color)
     status_lbl_3.config(text=msg, foreground=color)
+    status_lbl_4.config(text=msg, foreground=color)
     root.update()
+
+# ================= DRAG AND DROP HANDLER =================
+def handle_drop(event):
+    dropped_files = root.tk.splitlist(event.data)
+    pdf_files = [f for f in dropped_files if f.lower().endswith('.pdf')]
+    if not pdf_files: return
+    current_tab = notebook.index(notebook.select())
+    
+    if current_tab == 0:
+        filepath = pdf_files[0]
+        input_entry.delete(0, tk.END); input_entry.insert(0, filepath)
+        load_previews(filepath)
+    elif current_tab == 1:
+        for f in pdf_files: merge_listbox.insert(tk.END, f)
+    elif current_tab == 2:
+        filepath = pdf_files[0]
+        split_entry.delete(0, tk.END); split_entry.insert(0, filepath)
+    elif current_tab == 3: # Premium Tab
+        filepath = pdf_files[0]
+        prem_f1_entry.delete(0, tk.END); prem_f1_entry.insert(0, filepath)
 
 # ================= TAB 1: Numbering & Preview =================
 def select_input_file():
@@ -200,9 +246,7 @@ def load_previews(filepath):
         total_pages = len(doc)
         columns = 4 
         for i in range(total_pages):
-            if i % 10 == 0:
-                update_status(f"Loading preview {i}/{total_pages}...", "blue")
-            
+            if i % 10 == 0: update_status(f"Loading preview {i}/{total_pages}...", "blue")
             page = doc[i]
             pix = page.get_pixmap(matrix=fitz.Matrix(0.1, 0.1))
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
@@ -239,17 +283,13 @@ def update_preview_dots(*args):
         else: x = w / 2
         if pos_idx in (3, 4, 5): y = margin
         else: y = h - margin
-        
-        if item["dot_id"] is None:
-            item["dot_id"] = c.create_oval(x-r, y-r, x+r, y+r, fill="#00FF00", outline="black")
-        else:
-            c.coords(item["dot_id"], x-r, y-r, x+r, y+r)
+        if item["dot_id"] is None: item["dot_id"] = c.create_oval(x-r, y-r, x+r, y+r, fill="#00FF00", outline="black")
+        else: c.coords(item["dot_id"], x-r, y-r, x+r, y+r)
 
 def process_numbering():
     t = translations["EN" if lang_var.get() == "English" else "CN"]
     input_pdf = input_entry.get()
     if not os.path.exists(input_pdf): return messagebox.showerror(t["msg_err"], t["err_no_pdf"])
-    
     output_pdf = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title=t["save_as"])
     if not output_pdf: return
     update_status(t["stat_loading"], "blue")
@@ -264,32 +304,25 @@ def process_numbering():
 
         doc = fitz.open(input_pdf)
         total_pages = len(doc)
-        
         for p in range(total_pages):
             page = doc[p]
             page.wrap_contents()
             orig_rot = page.rotation
             page.set_rotation(0) 
-            
             text = f"Page {p + 1} of {total_pages}"
             text_len = fitz.get_text_length(text, fontname=fontname, fontsize=fontsize)
             rect = page.cropbox 
             mx, my = 30, 30
-            
             if pos_idx in (0, 3): x = rect.x0 + mx
             elif pos_idx in (2, 5): x = rect.x1 - mx - text_len
             else: x = rect.x0 + (rect.width / 2) - (text_len / 2)
             if pos_idx in (3, 4, 5): y = rect.y0 + my + fontsize
             else: y = rect.y1 - my
-            
             if use_bg:
                 page.draw_rect(fitz.Rect(x-5, y-fontsize-2, x+text_len+5, y+5), color=(1,1,1), fill=(1,1,1), overlay=True)
-
             page.insert_text((x, y), text, fontsize=fontsize, fontname=fontname, color=color, overlay=True)
-            
             if p in checkbox_vars and checkbox_vars[p].get(): orig_rot += rot_angle
             page.set_rotation(orig_rot)
-
         doc.save(output_pdf)
         doc.close()
         update_status(t["stat_success"], "green")
@@ -298,196 +331,192 @@ def process_numbering():
         update_status(t["stat_err"], "red")
         messagebox.showerror(t["msg_err"], str(e))
 
-# ================= TAB 2: Merge & Alternate Mix =================
+# ================= TAB 2 & 3 FUNCTIONS =================
 def t2_add():
     files = filedialog.askopenfilenames(filetypes=[("PDF files", "*.pdf")])
     for f in files: merge_listbox.insert(tk.END, f)
-
 def t2_rem():
-    selections = merge_listbox.curselection()
-    for i in reversed(selections): merge_listbox.delete(i)
-
+    for i in reversed(merge_listbox.curselection()): merge_listbox.delete(i)
 def t2_up():
-    selections = merge_listbox.curselection()
-    for i in selections:
+    for i in merge_listbox.curselection():
         if i == 0: continue
-        val = merge_listbox.get(i)
-        merge_listbox.delete(i)
-        merge_listbox.insert(i-1, val)
-        merge_listbox.selection_set(i-1)
-
+        val = merge_listbox.get(i); merge_listbox.delete(i); merge_listbox.insert(i-1, val); merge_listbox.selection_set(i-1)
 def t2_dn():
-    selections = merge_listbox.curselection()
-    for i in reversed(selections):
+    for i in reversed(merge_listbox.curselection()):
         if i == merge_listbox.size() - 1: continue
-        val = merge_listbox.get(i)
-        merge_listbox.delete(i)
-        merge_listbox.insert(i+1, val)
-        merge_listbox.selection_set(i+1)
+        val = merge_listbox.get(i); merge_listbox.delete(i); merge_listbox.insert(i+1, val); merge_listbox.selection_set(i+1)
 
 def process_merge():
     t = translations["EN" if lang_var.get() == "English" else "CN"]
     files = merge_listbox.get(0, tk.END)
     if len(files) < 2: return messagebox.showerror(t["msg_err"], "Please add at least 2 PDFs.")
-    
     out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
     if not out_file: return
     update_status(t["stat_loading"], "blue")
-
     try:
         out_doc = fitz.open()
-        for f in files:
-            doc = fitz.open(f)
-            out_doc.insert_pdf(doc)
-            doc.close()
-        out_doc.save(out_file)
-        out_doc.close()
+        for f in files: doc = fitz.open(f); out_doc.insert_pdf(doc); doc.close()
+        out_doc.save(out_file); out_doc.close()
         update_status(t["stat_success"], "green")
         messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e:
-        update_status(t["stat_err"], "red")
-        messagebox.showerror(t["msg_err"], str(e))
+        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
 def process_mix():
     t = translations["EN" if lang_var.get() == "English" else "CN"]
     files = merge_listbox.get(0, tk.END)
     if len(files) != 2: return messagebox.showerror(t["msg_err"], "Alternate Mix requires exactly 2 PDFs.")
-    
     out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
     if not out_file: return
     update_status(t["stat_loading"], "blue")
-
     try:
-        doc1 = fitz.open(files[0])
-        doc2 = fitz.open(files[1])
-        out_doc = fitz.open()
-        max_p = max(len(doc1), len(doc2))
-        
-        for i in range(max_p):
+        doc1 = fitz.open(files[0]); doc2 = fitz.open(files[1]); out_doc = fitz.open()
+        for i in range(max(len(doc1), len(doc2))):
             if i < len(doc1): out_doc.insert_pdf(doc1, from_page=i, to_page=i)
             if i < len(doc2): out_doc.insert_pdf(doc2, from_page=i, to_page=i)
-            
-        out_doc.save(out_file)
-        doc1.close(); doc2.close(); out_doc.close()
+        out_doc.save(out_file); doc1.close(); doc2.close(); out_doc.close()
         update_status(t["stat_success"], "green")
         messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e:
-        update_status(t["stat_err"], "red")
-        messagebox.showerror(t["msg_err"], str(e))
+        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
-# ================= TAB 3: Split & Extract =================
 def t3_sel():
-    filepath = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
-    if filepath:
-        split_entry.delete(0, tk.END)
-        split_entry.insert(0, filepath)
+    f = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
+    if f: split_entry.delete(0, tk.END); split_entry.insert(0, f)
 
 def process_split():
     t = translations["EN" if lang_var.get() == "English" else "CN"]
     in_pdf = split_entry.get()
     if not os.path.exists(in_pdf): return messagebox.showerror(t["msg_err"], t["err_no_pdf"])
-    
     mode = split_mode_var.get()
-    
     try:
         doc = fitz.open(in_pdf)
         base_name = os.path.splitext(os.path.basename(in_pdf))[0]
-        
         if mode == "extract":
-            # Extract to single file
             out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title=t["save_as"])
             if not out_file: return
             update_status(t["stat_loading"], "blue")
-            
             page_list = []
-            parts = split_ext_val.get().replace(" ", "").split(',')
-            for part in parts:
-                if '-' in part:
-                    s, e = part.split('-')
-                    page_list.extend(range(int(s)-1, int(e)))
-                elif part:
-                    page_list.append(int(part)-1)
-            
+            for part in split_ext_val.get().replace(" ", "").split(','):
+                if '-' in part: s, e = part.split('-'); page_list.extend(range(int(s)-1, int(e)))
+                elif part: page_list.append(int(part)-1)
             out_doc = fitz.open()
             for p in page_list:
-                if 0 <= p < len(doc):
-                    out_doc.insert_pdf(doc, from_page=p, to_page=p)
-            out_doc.save(out_file)
-            out_doc.close()
-
+                if 0 <= p < len(doc): out_doc.insert_pdf(doc, from_page=p, to_page=p)
+            out_doc.save(out_file); out_doc.close()
         else:
-            # Splitting modes: requires directory
             out_dir = filedialog.askdirectory(title=t["save_dir"])
             if not out_dir: return
             update_status(t["stat_loading"], "blue")
-            
             if mode == "div":
-                n = int(split_div_val.get())
-                part = 1
+                n = int(split_div_val.get()); part = 1
                 for i in range(0, len(doc), n):
                     out_doc = fitz.open()
                     out_doc.insert_pdf(doc, from_page=i, to_page=min(i+n-1, len(doc)-1))
-                    out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf"))
-                    out_doc.close()
-                    part += 1
-
+                    out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf")); out_doc.close(); part += 1
             elif mode == "bm":
                 toc = doc.get_toc()
                 bms = sorted(list(set([item[2]-1 for item in toc if item[2] > 0])))
                 if 0 not in bms: bms.insert(0, 0)
                 bms.append(len(doc))
-                
                 part = 1
                 for i in range(len(bms)-1):
-                    start_p = bms[i]
-                    end_p = bms[i+1]-1
+                    start_p, end_p = bms[i], bms[i+1]-1
                     if start_p <= end_p:
-                        out_doc = fitz.open()
-                        out_doc.insert_pdf(doc, from_page=start_p, to_page=end_p)
-                        out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf"))
-                        out_doc.close()
-                        part += 1
-                        
+                        out_doc = fitz.open(); out_doc.insert_pdf(doc, from_page=start_p, to_page=end_p)
+                        out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf")); out_doc.close(); part += 1
             elif mode == "size":
                 target_bytes = float(split_sz_val.get()) * 1048576
-                out_doc = fitz.open()
-                part = 1
+                out_doc = fitz.open(); part = 1
                 for p in range(len(doc)):
                     out_doc.insert_pdf(doc, from_page=p, to_page=p)
-                    # Checking size dynamically
                     if len(out_doc.tobytes(garbage=4)) >= target_bytes and out_doc.page_count > 1:
-                        out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf"))
-                        out_doc.close()
-                        out_doc = fitz.open() # Fresh start with next page
-                        part += 1
-                
-                if out_doc.page_count > 0:
-                    out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf"))
+                        out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf")); out_doc.close()
+                        out_doc = fitz.open(); part += 1
+                if out_doc.page_count > 0: out_doc.save(os.path.join(out_dir, f"{base_name}_part{part}.pdf"))
                 out_doc.close()
-
         doc.close()
         update_status(t["stat_success"], "green")
         messagebox.showinfo(t["app_title"], t["msg_success"])
-
     except Exception as e:
-        update_status(t["stat_err"], "red")
-        messagebox.showerror(t["msg_err"], str(e))
+        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
-# ================= MOUSE SCROLL (TAB 1) =================
+# ================= TAB 4: PREMIUM TOOLS =================
+def unlock_premium():
+    if prem_pass_entry.get() == "nicholas_tokismosthandsome":
+        prem_lock_frame.pack_forget()
+        prem_content_frame.pack(fill="both", expand=True)
+    else:
+        messagebox.showerror("Access Denied", "Incorrect developer code.")
+
+def t4_sel():
+    f = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
+    if f: prem_f1_entry.delete(0, tk.END); prem_f1_entry.insert(0, f)
+
+def process_unlock():
+    t = translations["EN" if lang_var.get() == "English" else "CN"]
+    in_pdf = prem_f1_entry.get()
+    if not os.path.exists(in_pdf): return messagebox.showerror(t["msg_err"], t["err_no_pdf"])
+    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
+    if not out_file: return
+    update_status(t["stat_loading"], "blue")
+    try:
+        doc = fitz.open(in_pdf)
+        if doc.is_encrypted: doc.authenticate("") # Attempts to bypass owner restriction
+        doc.save(out_file, encryption=fitz.PDF_ENCRYPT_NONE) # Strip all restrictions
+        doc.close()
+        update_status(t["stat_success"], "green")
+        messagebox.showinfo(t["app_title"], "PDF Restrictions Successfully Removed!")
+    except Exception as e:
+        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
+
+def process_stamp():
+    t = translations["EN" if lang_var.get() == "English" else "CN"]
+    in_pdf = prem_f1_entry.get()
+    if not os.path.exists(in_pdf): return messagebox.showerror(t["msg_err"], t["err_no_pdf"])
+    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
+    if not out_file: return
+    update_status(t["stat_loading"], "blue")
+    try:
+        doc = fitz.open(in_pdf)
+        stamp_text = prem_f2_txt_entry.get()
+        opacity = float(prem_f2_op_var.get()) / 100.0
+        
+        for p in range(len(doc)):
+            page = doc[p]
+            rect = page.rect
+            # Diagonal math for massive watermark
+            length = fitz.get_text_length(stamp_text, fontname="helv", fontsize=50)
+            x = (rect.width - length) / 2
+            y = rect.height / 2
+            # Add text with transparency
+            page.insert_text((x, y), stamp_text, fontsize=50, fontname="helv", color=(1,0,0), fill_opacity=opacity)
+        
+        doc.save(out_file)
+        doc.close()
+        update_status(t["stat_success"], "green")
+        messagebox.showinfo(t["app_title"], "Stamp Applied Successfully!")
+    except Exception as e:
+        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
+
+# ================= MOUSE SCROLL =================
 def _on_mousewheel(event):
-    if notebook.index(notebook.select()) != 0: return # Only scroll if Tab 1
+    if notebook.index(notebook.select()) != 0: return
     try:
         if scrollable_frame.winfo_height() > canvas.winfo_height():
             canvas.yview_scroll(int(-1*(event.delta/120)), "units")
     except Exception: pass
 
 # ================= GUI CONSTRUCTION =================
-root = tk.Tk()
+root = TkinterDnD.Tk()
 root.title("STA Singapore QC - PDF Workstation")
 root.geometry("1100x750")
 root.eval('tk::PlaceWindow . center')
 style = ttk.Style(root)
 style.theme_use('clam')
+
+root.drop_target_register(DND_FILES)
+root.dnd_bind('<<Drop>>', handle_drop)
 
 # HEADER
 header_frame = tk.Frame(root, bg="#ffffff", bd=2, relief="groove")
@@ -514,33 +543,30 @@ try:
     logo_label.pack(side="right", padx=15, pady=5)
 except Exception: pass
 
-# NOTEBOOK (TABS)
+# NOTEBOOK
 notebook = ttk.Notebook(root)
 notebook.pack(fill="both", expand=True, padx=10, pady=5)
 
 tab1_frame = ttk.Frame(notebook)
 tab2_frame = ttk.Frame(notebook)
 tab3_frame = ttk.Frame(notebook)
+tab4_frame = ttk.Frame(notebook)
 
 notebook.add(tab1_frame, text="1. Numbering & Rotate")
 notebook.add(tab2_frame, text="2. Merge & Mix")
 notebook.add(tab3_frame, text="3. Split & Extract")
+notebook.add(tab4_frame, text="👑 Premium Tools")
 
 # ========== TAB 1 UI ==========
 t1_paned = ttk.PanedWindow(tab1_frame, orient=tk.HORIZONTAL)
 t1_paned.pack(fill="both", expand=True, padx=5, pady=5)
+left_frame = ttk.Frame(t1_paned); t1_paned.add(left_frame, weight=1)
+right_frame = ttk.LabelFrame(t1_paned, text="PDF Preview"); t1_paned.add(right_frame, weight=3)
 
-left_frame = ttk.Frame(t1_paned)
-t1_paned.add(left_frame, weight=1)
-right_frame = ttk.LabelFrame(t1_paned, text="PDF Preview")
-t1_paned.add(right_frame, weight=3)
-
-file_frame = ttk.LabelFrame(left_frame, text="Select PDF")
+file_frame = ttk.LabelFrame(left_frame, text="Select PDF (or Drag & Drop anywhere)")
 file_frame.pack(fill="x", pady=5)
-input_entry = ttk.Entry(file_frame)
-input_entry.pack(fill="x", padx=10, pady=5)
-browse_btn = ttk.Button(file_frame, text="Browse", command=select_input_file)
-browse_btn.pack(pady=5)
+input_entry = ttk.Entry(file_frame); input_entry.pack(fill="x", padx=10, pady=5)
+browse_btn = ttk.Button(file_frame, text="Browse", command=select_input_file); browse_btn.pack(pady=5)
 
 num_frame = ttk.LabelFrame(left_frame, text="Page Number Styling")
 num_frame.pack(fill="x", pady=10)
@@ -562,7 +588,7 @@ color_dropdown = ttk.Combobox(num_frame, state="readonly", width=17, values=("Bl
 color_dropdown.current(0); color_dropdown.grid(row=3, column=1, pady=5)
 
 bg_var = tk.BooleanVar(value=False)
-bg_chk = ttk.Checkbutton(num_frame, text="Solid White Box", variable=bg_var)
+bg_chk = ttk.Checkbutton(num_frame, text="Solid White Box Behind Number", variable=bg_var)
 bg_chk.grid(row=4, column=0, columnspan=2, pady=5, padx=5, sticky="w")
 
 rot_frame = ttk.LabelFrame(left_frame, text="Rotation Settings")
@@ -572,7 +598,7 @@ rot_angle_lbl.grid(row=0, column=0, padx=5, pady=5, sticky="e")
 rot_angle_var = tk.StringVar(value="90°")
 ttk.Combobox(rot_frame, textvariable=rot_angle_var, state="readonly", width=10, values=("90°", "180°", "270°")).grid(row=0, column=1, pady=5)
 
-process_btn = tk.Button(left_frame, text="PROCESS CA PDF", command=process_numbering, bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10)
+process_btn = tk.Button(left_frame, text="PROCESS & SAVE", command=process_numbering, bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10)
 process_btn.pack(fill="x", pady=10)
 status_lbl_1 = ttk.Label(left_frame, text="Status: Ready", font=("Arial", 10, "bold"))
 status_lbl_1.pack()
@@ -590,83 +616,102 @@ root.bind_all("<MouseWheel>", _on_mousewheel)
 # ========== TAB 2 UI ==========
 t2_center = tk.Frame(tab2_frame)
 t2_center.pack(pady=30)
-merge_lbl = ttk.Label(t2_center, text="Add files in the order:", font=("Arial", 11, "bold"))
+merge_lbl = ttk.Label(t2_center, text="Add files in order (or Drag & Drop multiple here):", font=("Arial", 11, "bold"))
 merge_lbl.pack(anchor="w")
 
-listbox_frame = tk.Frame(t2_center)
-listbox_frame.pack(pady=5)
+listbox_frame = tk.Frame(t2_center); listbox_frame.pack(pady=5)
 merge_listbox = tk.Listbox(listbox_frame, width=80, height=15, selectmode=tk.EXTENDED, font=("Arial", 10))
 merge_listbox.pack(side=tk.LEFT, fill=tk.BOTH)
-scroll_lb = tk.Scrollbar(listbox_frame, command=merge_listbox.yview)
-scroll_lb.pack(side=tk.RIGHT, fill=tk.Y)
+scroll_lb = tk.Scrollbar(listbox_frame, command=merge_listbox.yview); scroll_lb.pack(side=tk.RIGHT, fill=tk.Y)
 merge_listbox.config(yscrollcommand=scroll_lb.set)
 
-btn_frame_2 = tk.Frame(t2_center)
-btn_frame_2.pack(fill="x", pady=10)
-btn_add_merge = ttk.Button(btn_frame_2, text="Add PDFs", command=t2_add)
-btn_add_merge.grid(row=0, column=0, padx=5)
-btn_rem_merge = ttk.Button(btn_frame_2, text="Remove", command=t2_rem)
-btn_rem_merge.grid(row=0, column=1, padx=5)
-btn_up_merge = ttk.Button(btn_frame_2, text="Move Up", command=t2_up)
-btn_up_merge.grid(row=0, column=2, padx=5)
-btn_dn_merge = ttk.Button(btn_frame_2, text="Move Down", command=t2_dn)
-btn_dn_merge.grid(row=0, column=3, padx=5)
+btn_frame_2 = tk.Frame(t2_center); btn_frame_2.pack(fill="x", pady=10)
+btn_add_merge = ttk.Button(btn_frame_2, text="Add PDFs", command=t2_add); btn_add_merge.grid(row=0, column=0, padx=5)
+btn_rem_merge = ttk.Button(btn_frame_2, text="Remove Selected", command=t2_rem); btn_rem_merge.grid(row=0, column=1, padx=5)
+btn_up_merge = ttk.Button(btn_frame_2, text="Move Up", command=t2_up); btn_up_merge.grid(row=0, column=2, padx=5)
+btn_dn_merge = ttk.Button(btn_frame_2, text="Move Down", command=t2_dn); btn_dn_merge.grid(row=0, column=3, padx=5)
 
 btn_do_merge = tk.Button(t2_center, text="MERGE PDFs", command=process_merge, bg="#28A745", fg="white", font=("Arial", 11, "bold"), width=30, pady=5)
 btn_do_merge.pack(pady=10)
 btn_do_mix = tk.Button(t2_center, text="ALTERNATE MIX", command=process_mix, bg="#17A2B8", fg="white", font=("Arial", 11, "bold"), width=30, pady=5)
 btn_do_mix.pack(pady=5)
-status_lbl_2 = ttk.Label(t2_center, text="Status: Ready", font=("Arial", 10, "bold"))
-status_lbl_2.pack(pady=10)
+status_lbl_2 = ttk.Label(t2_center, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_2.pack(pady=10)
 
 # ========== TAB 3 UI ==========
-t3_center = tk.Frame(tab3_frame)
-t3_center.pack(pady=30, padx=50, fill="x")
+t3_center = tk.Frame(tab3_frame); t3_center.pack(pady=30, padx=50, fill="x")
 
-split_file_lbl = ttk.Label(t3_center, text="Select File:", font=("Arial", 11, "bold"))
+split_file_lbl = ttk.Label(t3_center, text="Select File to Split/Extract (or Drag & Drop):", font=("Arial", 11, "bold"))
 split_file_lbl.pack(anchor="w")
-t3_f = tk.Frame(t3_center)
-t3_f.pack(fill="x", pady=5)
-split_entry = ttk.Entry(t3_f, width=70)
-split_entry.pack(side="left")
-split_browse_btn = ttk.Button(t3_f, text="Browse", command=t3_sel)
-split_browse_btn.pack(side="left", padx=10)
+t3_f = tk.Frame(t3_center); t3_f.pack(fill="x", pady=5)
+split_entry = ttk.Entry(t3_f, width=70); split_entry.pack(side="left")
+split_browse_btn = ttk.Button(t3_f, text="Browse", command=t3_sel); split_browse_btn.pack(side="left", padx=10)
 
-modes_frame = ttk.LabelFrame(t3_center, text="Action Mode")
-modes_frame.pack(fill="x", pady=20, ipadx=10, ipady=10)
-
+modes_frame = ttk.LabelFrame(t3_center, text="Action Mode"); modes_frame.pack(fill="x", pady=20, ipadx=10, ipady=10)
 split_mode_var = tk.StringVar(value="extract")
 
-f_ext = tk.Frame(modes_frame)
-f_ext.pack(fill="x", pady=5)
-rb_ext = ttk.Radiobutton(f_ext, text="Extract/Duplicate (e.g. 1-5, 8, 9, 9):", variable=split_mode_var, value="extract")
+f_ext = tk.Frame(modes_frame); f_ext.pack(fill="x", pady=5)
+rb_ext = ttk.Radiobutton(f_ext, text="Extract/Duplicate Pages (e.g. 1-5, 8, 9, 9):", variable=split_mode_var, value="extract")
 rb_ext.pack(side="left")
-split_ext_val = ttk.Entry(f_ext, width=20); split_ext_val.pack(side="left", padx=10)
-split_ext_val.insert(0, "1-3, 5")
+split_ext_val = ttk.Entry(f_ext, width=20); split_ext_val.pack(side="left", padx=10); split_ext_val.insert(0, "1-3, 5")
 
-f_div = tk.Frame(modes_frame)
-f_div.pack(fill="x", pady=5)
+f_div = tk.Frame(modes_frame); f_div.pack(fill="x", pady=5)
 rb_div = ttk.Radiobutton(f_div, text="Split after every X pages:", variable=split_mode_var, value="div")
 rb_div.pack(side="left")
-split_div_val = ttk.Entry(f_div, width=10); split_div_val.pack(side="left", padx=10)
-split_div_val.insert(0, "5")
+split_div_val = ttk.Entry(f_div, width=10); split_div_val.pack(side="left", padx=10); split_div_val.insert(0, "5")
 
-f_bm = tk.Frame(modes_frame)
-f_bm.pack(fill="x", pady=5)
-rb_bm = ttk.Radiobutton(f_bm, text="Split by Bookmarks", variable=split_mode_var, value="bm")
-rb_bm.pack(side="left")
+f_bm = tk.Frame(modes_frame); f_bm.pack(fill="x", pady=5)
+rb_bm = ttk.Radiobutton(f_bm, text="Split by Bookmarks", variable=split_mode_var, value="bm"); rb_bm.pack(side="left")
 
-f_sz = tk.Frame(modes_frame)
-f_sz.pack(fill="x", pady=5)
-rb_size = ttk.Radiobutton(f_sz, text="Split by Target Size (MB):", variable=split_mode_var, value="size")
+f_sz = tk.Frame(modes_frame); f_sz.pack(fill="x", pady=5)
+rb_size = ttk.Radiobutton(f_sz, text="Split by Target Size (MB) - approximate:", variable=split_mode_var, value="size")
 rb_size.pack(side="left")
-split_sz_val = ttk.Entry(f_sz, width=10); split_sz_val.pack(side="left", padx=10)
-split_sz_val.insert(0, "10")
+split_sz_val = ttk.Entry(f_sz, width=10); split_sz_val.pack(side="left", padx=10); split_sz_val.insert(0, "10")
 
 btn_do_split = tk.Button(t3_center, text="EXECUTE", command=process_split, bg="#DC3545", fg="white", font=("Arial", 11, "bold"), width=30, pady=10)
 btn_do_split.pack(pady=20)
-status_lbl_3 = ttk.Label(t3_center, text="Status: Ready", font=("Arial", 10, "bold"))
-status_lbl_3.pack()
+status_lbl_3 = ttk.Label(t3_center, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_3.pack()
+
+# ========== TAB 4 UI (PREMIUM) ==========
+prem_lock_frame = tk.Frame(tab4_frame)
+prem_lock_frame.pack(expand=True)
+
+prem_lock_lbl = tk.Label(prem_lock_frame, text="RESTRICTED ACCESS\nEnter developer access code to unlock Premium Functions:", font=("Arial", 12, "bold"), fg="#DC3545", pady=10)
+prem_lock_lbl.pack()
+prem_pass_entry = ttk.Entry(prem_lock_frame, show="*", width=35, font=("Arial", 12))
+prem_pass_entry.pack(pady=10)
+prem_unlock_btn = tk.Button(prem_lock_frame, text="UNLOCK", command=unlock_premium, bg="#FFC107", font=("Arial", 11, "bold"), width=15)
+prem_unlock_btn.pack(pady=10)
+
+prem_content_frame = tk.Frame(tab4_frame) # Hidden by default
+
+t4_f = tk.Frame(prem_content_frame); t4_f.pack(fill="x", padx=50, pady=20)
+ttk.Label(t4_f, text="Select Target PDF (or Drag & Drop):", font=("Arial", 10, "bold")).pack(anchor="w")
+f_br = tk.Frame(t4_f); f_br.pack(fill="x", pady=5)
+prem_f1_entry = ttk.Entry(f_br, width=70); prem_f1_entry.pack(side="left")
+ttk.Button(f_br, text="Browse", command=t4_sel).pack(side="left", padx=10)
+
+f1_box = ttk.LabelFrame(prem_content_frame, text="Function 1"); f1_box.pack(fill="x", padx=50, pady=10, ipady=10)
+prem_f1_lbl = ttk.Label(f1_box, text="Premium #1: Remove PDF Restrictions (Unlock Copy/Highlight)", font=("Arial", 11, "bold"))
+prem_f1_lbl.pack(pady=10)
+btn_do_unlock = tk.Button(f1_box, text="STRIP RESTRICTIONS & SAVE", command=process_unlock, bg="#28A745", fg="white", font=("Arial", 11, "bold"), pady=5, width=30)
+btn_do_unlock.pack()
+
+f2_box = ttk.LabelFrame(prem_content_frame, text="Function 2"); f2_box.pack(fill="x", padx=50, pady=10, ipady=10)
+prem_f2_lbl = ttk.Label(f2_box, text="Premium #2: Pro QC Stamper / Watermark", font=("Arial", 11, "bold"))
+prem_f2_lbl.pack(pady=10)
+
+f2_sub = tk.Frame(f2_box); f2_sub.pack(pady=5)
+prem_f2_txt_lbl = ttk.Label(f2_sub, text="Text to Stamp:"); prem_f2_txt_lbl.grid(row=0, column=0, padx=5)
+prem_f2_txt_entry = ttk.Entry(f2_sub, width=30); prem_f2_txt_entry.grid(row=0, column=1, padx=5); prem_f2_txt_entry.insert(0, "CONFIDENTIAL / APPROVED")
+
+prem_f2_op_lbl = ttk.Label(f2_sub, text="Opacity:"); prem_f2_op_lbl.grid(row=0, column=2, padx=5)
+prem_f2_op_var = tk.StringVar(value="30")
+ttk.Spinbox(f2_sub, from_=10, to=100, textvariable=prem_f2_op_var, width=5).grid(row=0, column=3, padx=5)
+
+btn_do_stamp = tk.Button(f2_box, text="APPLY STAMP & SAVE", command=process_stamp, bg="#17A2B8", fg="white", font=("Arial", 11, "bold"), pady=5, width=30)
+btn_do_stamp.pack(pady=10)
+
+status_lbl_4 = ttk.Label(prem_content_frame, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_4.pack(pady=10)
 
 change_language()
 root.mainloop()
