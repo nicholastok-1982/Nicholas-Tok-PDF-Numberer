@@ -54,12 +54,8 @@ translations = {
         # Tab 4 (Premium)
         "prem_lock_msg": "RESTRICTED ACCESS\nEnter developer access code to unlock Premium Functions:",
         "prem_unlock_btn": "UNLOCK",
-        "prem_f1_title": "Premium #1: Remove PDF Restrictions (Unlock Copy/Highlight)",
+        "prem_f1_title": "Premium Feature: Remove PDF Restrictions (Unlock Copy/Highlight)",
         "prem_f1_btn": "STRIP RESTRICTIONS & SAVE",
-        "prem_f2_title": "Premium #2: Pro QC Stamper / Watermark",
-        "prem_f2_txt": "Text to Stamp:",
-        "prem_f2_op": "Opacity:",
-        "prem_f2_btn": "APPLY STAMP & SAVE",
         # Status/Messages
         "stat_ready": "Status: Ready",
         "stat_loading": "Status: Working... please wait.",
@@ -113,12 +109,8 @@ translations = {
         # Tab 4
         "prem_lock_msg": "受限访问\n请输入开发者访问代码以解锁高级功能：",
         "prem_unlock_btn": "解锁",
-        "prem_f1_title": "高级 #1: 移除 PDF 限制 (解锁复制/高亮)",
+        "prem_f1_title": "高级功能: 移除 PDF 限制 (解锁复制/高亮)",
         "prem_f1_btn": "移除限制并保存",
-        "prem_f2_title": "高级 #2: 专业 QC 印章 / 水印",
-        "prem_f2_txt": "印章文字:",
-        "prem_f2_op": "不透明度:",
-        "prem_f2_btn": "应用印章并保存",
         # Status/Messages
         "stat_ready": "状态：就绪",
         "stat_loading": "状态：正在处理... 请稍候。",
@@ -193,10 +185,6 @@ def change_language(event=None):
     prem_unlock_btn.config(text=t["prem_unlock_btn"])
     prem_f1_lbl.config(text=t["prem_f1_title"])
     btn_do_unlock.config(text=t["prem_f1_btn"])
-    prem_f2_lbl.config(text=t["prem_f2_title"])
-    prem_f2_txt_lbl.config(text=t["prem_f2_txt"])
-    prem_f2_op_lbl.config(text=t["prem_f2_op"])
-    btn_do_stamp.config(text=t["prem_f2_btn"])
 
     update_status(t["stat_ready"], "black")
 
@@ -470,35 +458,6 @@ def process_unlock():
     except Exception as e:
         update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
-def process_stamp():
-    t = translations["EN" if lang_var.get() == "English" else "CN"]
-    in_pdf = prem_f1_entry.get()
-    if not os.path.exists(in_pdf): return messagebox.showerror(t["msg_err"], t["err_no_pdf"])
-    out_file = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")])
-    if not out_file: return
-    update_status(t["stat_loading"], "blue")
-    try:
-        doc = fitz.open(in_pdf)
-        stamp_text = prem_f2_txt_entry.get()
-        opacity = float(prem_f2_op_var.get()) / 100.0
-        
-        for p in range(len(doc)):
-            page = doc[p]
-            rect = page.rect
-            # Diagonal math for massive watermark
-            length = fitz.get_text_length(stamp_text, fontname="helv", fontsize=50)
-            x = (rect.width - length) / 2
-            y = rect.height / 2
-            # Add text with transparency
-            page.insert_text((x, y), stamp_text, fontsize=50, fontname="helv", color=(1,0,0), fill_opacity=opacity)
-        
-        doc.save(out_file)
-        doc.close()
-        update_status(t["stat_success"], "green")
-        messagebox.showinfo(t["app_title"], "Stamp Applied Successfully!")
-    except Exception as e:
-        update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
-
 # ================= MOUSE SCROLL =================
 def _on_mousewheel(event):
     if notebook.index(notebook.select()) != 0: return
@@ -690,26 +649,11 @@ f_br = tk.Frame(t4_f); f_br.pack(fill="x", pady=5)
 prem_f1_entry = ttk.Entry(f_br, width=70); prem_f1_entry.pack(side="left")
 ttk.Button(f_br, text="Browse", command=t4_sel).pack(side="left", padx=10)
 
-f1_box = ttk.LabelFrame(prem_content_frame, text="Function 1"); f1_box.pack(fill="x", padx=50, pady=10, ipady=10)
-prem_f1_lbl = ttk.Label(f1_box, text="Premium #1: Remove PDF Restrictions (Unlock Copy/Highlight)", font=("Arial", 11, "bold"))
+f1_box = ttk.LabelFrame(prem_content_frame, text="PDF Restriction Remover"); f1_box.pack(fill="x", padx=50, pady=10, ipady=10)
+prem_f1_lbl = ttk.Label(f1_box, text="Premium Feature: Remove PDF Restrictions (Unlock Copy/Highlight)", font=("Arial", 11, "bold"))
 prem_f1_lbl.pack(pady=10)
 btn_do_unlock = tk.Button(f1_box, text="STRIP RESTRICTIONS & SAVE", command=process_unlock, bg="#28A745", fg="white", font=("Arial", 11, "bold"), pady=5, width=30)
 btn_do_unlock.pack()
-
-f2_box = ttk.LabelFrame(prem_content_frame, text="Function 2"); f2_box.pack(fill="x", padx=50, pady=10, ipady=10)
-prem_f2_lbl = ttk.Label(f2_box, text="Premium #2: Pro QC Stamper / Watermark", font=("Arial", 11, "bold"))
-prem_f2_lbl.pack(pady=10)
-
-f2_sub = tk.Frame(f2_box); f2_sub.pack(pady=5)
-prem_f2_txt_lbl = ttk.Label(f2_sub, text="Text to Stamp:"); prem_f2_txt_lbl.grid(row=0, column=0, padx=5)
-prem_f2_txt_entry = ttk.Entry(f2_sub, width=30); prem_f2_txt_entry.grid(row=0, column=1, padx=5); prem_f2_txt_entry.insert(0, "CONFIDENTIAL / APPROVED")
-
-prem_f2_op_lbl = ttk.Label(f2_sub, text="Opacity:"); prem_f2_op_lbl.grid(row=0, column=2, padx=5)
-prem_f2_op_var = tk.StringVar(value="30")
-ttk.Spinbox(f2_sub, from_=10, to=100, textvariable=prem_f2_op_var, width=5).grid(row=0, column=3, padx=5)
-
-btn_do_stamp = tk.Button(f2_box, text="APPLY STAMP & SAVE", command=process_stamp, bg="#17A2B8", fg="white", font=("Arial", 11, "bold"), pady=5, width=30)
-btn_do_stamp.pack(pady=10)
 
 status_lbl_4 = ttk.Label(prem_content_frame, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_4.pack(pady=10)
 
