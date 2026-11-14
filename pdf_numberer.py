@@ -58,7 +58,7 @@ translations = {
         "prem_f2_desc": "*For digital PDFs with highlightable text only.",
         "prem_f2_btn": "CONVERT DIGITAL TO WORD",
         "prem_f3_title": "Premium #3: SCANNED PDF to Word (Deep Learning OCR)",
-        "prem_f3_desc": "*100% Offline AI. Extracts English & Chinese from flat images.",
+        "prem_f3_desc": "*Offline AI layout mirroring. Auto-detects English/Chinese.",
         "prem_f3_btn": "RUN AI OCR CONVERSION",
         "stat_ready": "Status: Ready",
         "stat_loading": "Status: Working... please wait.",
@@ -114,7 +114,7 @@ translations = {
         "prem_f2_desc": "*仅适用于可高亮文本的数字PDF。",
         "prem_f2_btn": "数字 PDF 转换 WORD",
         "prem_f3_title": "高级 #3: 扫描版 PDF 转 Word (深度学习 OCR)",
-        "prem_f3_desc": "*100% 离线 AI。从图像中提取中英文本。",
+        "prem_f3_desc": "*离线 AI 布局镜像。自动检测中文/英文。",
         "prem_f3_btn": "运行 AI OCR 转换",
         "stat_ready": "状态：就绪",
         "stat_loading": "状态：正在处理... 请稍候。",
@@ -199,7 +199,6 @@ def update_status(msg, color="black"):
     status_lbl_3.config(text=msg, foreground=color)
     root.update()
 
-# ================= DRAG AND DROP HANDLER =================
 def handle_drop(event):
     dropped_files = root.tk.splitlist(event.data)
     pdf_files = [f for f in dropped_files if f.lower().endswith('.pdf')]
@@ -214,11 +213,11 @@ def handle_drop(event):
     elif current_tab == 2:
         filepath = pdf_files[0]
         split_entry.delete(0, tk.END); split_entry.insert(0, filepath)
-    elif current_tab == 3: # Premium Tab
+    elif current_tab == 3: 
         filepath = pdf_files[0]
         prem_f1_entry.delete(0, tk.END); prem_f1_entry.insert(0, filepath)
 
-# ================= TAB 1: Numbering & Preview =================
+
 def select_input_file():
     f = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
     if f: input_entry.delete(0, tk.END); input_entry.insert(0, f); load_previews(f)
@@ -293,7 +292,6 @@ def process_numbering():
         doc.save(output_pdf); doc.close(); update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e: update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
-# ================= TAB 2 & 3 FUNCTIONS =================
 def t2_add():
     for f in filedialog.askopenfilenames(filetypes=[("PDF files", "*.pdf")]): merge_listbox.insert(tk.END, f)
 def t2_rem():
@@ -390,7 +388,6 @@ def process_split():
         doc.close(); update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e: update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
-# ================= TAB 4: PREMIUM TOOLS =================
 def unlock_premium():
     if prem_pass_entry.get() == "11066547":
         prem_lock_frame.pack_forget(); prem_content_frame.pack(fill="both", expand=True)
@@ -423,74 +420,137 @@ def process_pdf2word():
         messagebox.showinfo("Success", "Converted to Word Document!")
     except Exception as e: messagebox.showerror("Error", str(e))
 
-# --- Threaded RapidOCR (ONNX) Implementation ---
+# ================= NEW AI OCR ENGINE (LAYOUT MIRRORING) =================
 def log_msg(msg):
     root.after(0, lambda: [ocr_log_text.insert(tk.END, msg + "\n"), ocr_log_text.see(tk.END)])
 
 def threaded_ocr_process(pdf_path, out_path, lang_code):
     try:
-        log_msg("SYSTEM: Initializing RapidOCR (ONNX) AI Engine...")
-        log_msg("SYSTEM: AI Models are embedded. 100% Offline processing enabled.")
+        log_msg("SYSTEM: Initializing RapidOCR AI Engine...")
         from rapidocr_onnxruntime import RapidOCR
         import cv2
         import numpy as np
         from docx import Document
         from docx.shared import Pt, RGBColor
+        from docx.enum.text import WD_TAB_ALIGNMENT
         from docx.oxml.ns import qn
         
         ocr = RapidOCR()
-        
         doc_pdf = fitz.open(pdf_path)
         doc_word = Document()
 
+        # Step 1: Force Word document to have 0-inch margins so coordinates map perfectly.
+        for section in doc_word.sections:
+            section.top_margin = Pt(0)
+            section.bottom_margin = Pt(0)
+            section.left_margin = Pt(0)
+            section.right_margin = Pt(0)
+
+        # Scale math: Extract images at 150 DPI for speed. 
+        # 1 inch = 150 pixels = 72 physical points. (Multiplier is 72/150 = 0.48)
+        DPI = 150
+        SCALE = 72.0 / DPI
+
         for page_num in range(len(doc_pdf)):
-            log_msg(f"Processing Page {page_num+1}/{len(doc_pdf)}: Extracting high-res image...")
+            log_msg(f"Processing Page {page_num+1}/{len(doc_pdf)}: Rendering image...")
             page = doc_pdf[page_num]
-            pix = page.get_pixmap(dpi=200)
+            pix = page.get_pixmap(dpi=DPI)
             img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
             
             if pix.n == 4: img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
             elif pix.n == 1: img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
             elif pix.n == 3: img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             
-            log_msg(f"Page {page_num+1}: Running Layout Analysis & Character Recognition...")
+            log_msg(f"Page {page_num+1}: Reading text and physical layout...")
             result, elapse = ocr(img)
             
             if not result:
-                doc_word.add_paragraph("")
+                doc_word.add_page_break()
                 continue
                 
-            lines = result
-            lines.sort(key=lambda x: (x[0][0][1] // 15, x[0][0][0]))
-
-            for line in lines:
+            # Parse text boxes and apply resolution scaling
+            blocks = []
+            for line in result:
                 box, text, conf = line
-                box_height = box[3][1] - box[0][1]
-                font_size_pt = max(8, int(box_height * 0.70)) 
+                x0 = box[0][0] * SCALE
+                y0 = box[0][1] * SCALE
+                x1 = box[1][0] * SCALE
+                y1 = box[3][1] * SCALE
+                h = y1 - y0
+                blocks.append({'text': text, 'x': x0, 'y': y0, 'h': h})
+
+            # Sort top-to-bottom
+            blocks.sort(key=lambda b: b['y'])
+
+            # Group into horizontal rows (for tables and multi-column mirroring)
+            rows = []
+            current_row = []
+            row_y = -1
+            
+            for b in blocks:
+                if not current_row:
+                    current_row.append(b)
+                    row_y = b['y']
+                else:
+                    # If same Y-axis (within 60% margin of error), it is the same line/row.
+                    if abs(b['y'] - row_y) < (b['h'] * 0.6): 
+                        current_row.append(b)
+                    else:
+                        rows.append(current_row)
+                        current_row = [b]
+                        row_y = b['y']
+            if current_row:
+                rows.append(current_row)
+
+            # Reconstruct the Page in Microsoft Word
+            prev_bottom_y = 0
+            
+            for r in rows:
+                r.sort(key=lambda b: b['x']) # Sort blocks left-to-right
+                
+                row_y = min(b['y'] for b in r)
+                row_h = max(b['h'] for b in r)
+                
+                # Push the paragraph down exactly where it belongs
+                space_before = row_y - prev_bottom_y
+                if space_before < 0: space_before = 0
                 
                 p = doc_word.add_paragraph()
+                p.paragraph_format.space_before = Pt(space_before)
+                # p.paragraph_format.space_after = Pt(0)
                 
-                if box[0][0] > (pix.width * 0.6): p.alignment = 2
-                elif box[0][0] > (pix.width * 0.3): p.alignment = 1
-                else: p.alignment = 0 
+                # Push the paragraph right exactly where it belongs
+                p.paragraph_format.left_indent = Pt(r[0]['x'])
+                
+                for i, b in enumerate(r):
+                    # Font math: Point size is usually ~75% of box bounding height
+                    font_size_pt = max(7, int(b['h'] * 0.75))
+                    
+                    if i > 0:
+                        # Reconstruct columns/tables utilizing physical Tab Stops
+                        p.paragraph_format.tab_stops.add_tab_stop(Pt(b['x']), WD_TAB_ALIGNMENT.LEFT)
+                        run = p.add_run('\t' + b['text'])
+                    else:
+                        run = p.add_run(b['text'])
+                    
+                    # Apply scaled font
+                    run.font.size = Pt(font_size_pt)
+                    run.font.name = 'Arial'
+                    run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
+                    run.font.color.rgb = RGBColor(0, 0, 0)
+                
+                prev_bottom_y = row_y + (row_h * 1.1)
 
-                run = p.add_run(text)
-                run.font.size = Pt(font_size_pt)
-                
-                run.font.name = 'Arial'
-                run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
-                run.font.color.rgb = RGBColor(0, 0, 0)
-            
-            # --- THE FIX: ADDING UP THE LIST OF PROCESSING TIMES ---
-            if isinstance(elapse, list):
-                total_time = sum(elapse)
-            else:
-                total_time = float(elapse)
-                
-            log_msg(f"Page {page_num+1} Completed successfully. (Process time: {total_time:.2f}s)")
+            # Separate pages properly
+            if page_num < len(doc_pdf) - 1:
+                doc_word.add_page_break()
+
+            total_time = sum(elapse) if isinstance(elapse, list) else float(elapse)
+            log_msg(f"Page {page_num+1} Completed successfully. (Time: {total_time:.2f}s)")
 
         doc_word.save(out_path)
         log_msg("===========================================")
+        log_msg("NOTE: Graphical elements (photos/lines) are not extracted. Layout is mirrored using Tab alignment.")
         log_msg(f"SUCCESS: Document saved to {out_path}")
         log_msg("===========================================")
         root.after(0, lambda: btn_do_ocr.config(state=tk.NORMAL))
@@ -513,7 +573,6 @@ def process_ai_ocr():
     thread.daemon = True
     thread.start()
 
-# ================= MOUSE SCROLL =================
 def _on_mousewheel(event):
     if notebook.index(notebook.select()) != 0: return
     try:
@@ -548,7 +607,6 @@ notebook = ttk.Notebook(root); notebook.pack(fill="both", expand=True, padx=10, 
 tab1_frame = ttk.Frame(notebook); tab2_frame = ttk.Frame(notebook); tab3_frame = ttk.Frame(notebook); tab4_frame = ttk.Frame(notebook)
 notebook.add(tab1_frame, text="1. Numbering & Rotate"); notebook.add(tab2_frame, text="2. Merge & Mix"); notebook.add(tab3_frame, text="3. Split & Extract"); notebook.add(tab4_frame, text="👑 Premium Tools")
 
-# ========== TAB 1 UI ==========
 t1_paned = ttk.PanedWindow(tab1_frame, orient=tk.HORIZONTAL); t1_paned.pack(fill="both", expand=True, padx=5, pady=5)
 left_frame = ttk.Frame(t1_paned); t1_paned.add(left_frame, weight=1)
 right_frame = ttk.LabelFrame(t1_paned, text="PDF Preview"); t1_paned.add(right_frame, weight=3)
@@ -577,7 +635,6 @@ scrollable_frame = ttk.Frame(canvas); scrollable_frame.bind("<Configure>", lambd
 canvas.create_window((0, 0), window=scrollable_frame, anchor="nw"); canvas.configure(yscrollcommand=scrollbar.set)
 canvas.pack(side="left", fill="both", expand=True); scrollbar.pack(side="right", fill="y"); root.bind_all("<MouseWheel>", _on_mousewheel)
 
-# ========== TAB 2 UI ==========
 t2_center = tk.Frame(tab2_frame); t2_center.pack(pady=30)
 merge_lbl = ttk.Label(t2_center, text="Add files in order (or Drag & Drop multiple here):", font=("Arial", 11, "bold")); merge_lbl.pack(anchor="w")
 listbox_frame = tk.Frame(t2_center); listbox_frame.pack(pady=5); merge_listbox = tk.Listbox(listbox_frame, width=80, height=15, selectmode=tk.EXTENDED, font=("Arial", 10)); merge_listbox.pack(side=tk.LEFT, fill=tk.BOTH)
@@ -591,7 +648,6 @@ btn_do_merge = tk.Button(t2_center, text="MERGE PDFs", command=process_merge, bg
 btn_do_mix = tk.Button(t2_center, text="ALTERNATE MIX", command=process_mix, bg="#17A2B8", fg="white", font=("Arial", 11, "bold"), width=30, pady=5); btn_do_mix.pack(pady=5)
 status_lbl_2 = ttk.Label(t2_center, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_2.pack(pady=10)
 
-# ========== TAB 3 UI ==========
 t3_center = tk.Frame(tab3_frame); t3_center.pack(pady=30, padx=50, fill="x")
 split_file_lbl = ttk.Label(t3_center, text="Select File to Split/Extract (or Drag & Drop):", font=("Arial", 11, "bold")); split_file_lbl.pack(anchor="w")
 t3_f = tk.Frame(t3_center); t3_f.pack(fill="x", pady=5); split_entry = ttk.Entry(t3_f, width=70); split_entry.pack(side="left"); split_browse_btn = ttk.Button(t3_f, text="Browse", command=t3_sel); split_browse_btn.pack(side="left", padx=10)
@@ -603,7 +659,6 @@ f_sz = tk.Frame(modes_frame); f_sz.pack(fill="x", pady=5); rb_size = ttk.Radiobu
 btn_do_split = tk.Button(t3_center, text="EXECUTE", command=process_split, bg="#DC3545", fg="white", font=("Arial", 11, "bold"), width=30, pady=10); btn_do_split.pack(pady=20)
 status_lbl_3 = ttk.Label(t3_center, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_3.pack()
 
-# ========== TAB 4 UI (PREMIUM) ==========
 prem_lock_frame = tk.Frame(tab4_frame); prem_lock_frame.pack(expand=True)
 prem_lock_lbl = tk.Label(prem_lock_frame, text="RESTRICTED ACCESS\nEnter developer access code to unlock Premium Functions:", font=("Arial", 12, "bold"), fg="#DC3545", pady=10); prem_lock_lbl.pack()
 prem_pass_entry = ttk.Entry(prem_lock_frame, show="*", width=35, font=("Arial", 12)); prem_pass_entry.pack(pady=10)
@@ -630,13 +685,13 @@ prem_grid.columnconfigure(0, weight=1); prem_grid.columnconfigure(1, weight=1)
 
 f3_box = ttk.LabelFrame(prem_content_frame, text="Deep Learning OCR (Scanned to Word)"); f3_box.pack(fill="x", padx=50, pady=10)
 prem_f3_lbl = ttk.Label(f3_box, text="Premium #3: SCANNED PDF to Word", font=("Arial", 11, "bold")); prem_f3_lbl.pack(pady=5)
-prem_f3_desc = ttk.Label(f3_box, text="*100% Offline AI. Extracts English & Chinese from flat images.", font=("Arial", 9, "italic"), foreground="gray"); prem_f3_desc.pack()
+prem_f3_desc = ttk.Label(f3_box, text="*Offline AI layout mirroring. Auto-detects English/Chinese.", font=("Arial", 9, "italic"), foreground="gray"); prem_f3_desc.pack()
 
 f3_ctrl = tk.Frame(f3_box); f3_ctrl.pack(pady=10)
 ttk.Label(f3_ctrl, text="Document Language:").pack(side="left", padx=5)
 ocr_lang_var = tk.StringVar(value="Chinese/English (Auto)")
 ttk.Combobox(f3_ctrl, textvariable=ocr_lang_var, state="readonly", values=("Chinese/English (Auto)", "English Only")).pack(side="left", padx=5)
-btn_do_ocr = tk.Button(f3_ctrl, text="RUN AI OCR CONVERSION", command=process_ai_ocr, bg="#6f42c1", fg="white", font=("Arial", 10, "bold"), width=25); btn_do_ocr.pack(side="left", padx=10)
+btn_do_ocr = tk.Button(f3_ctrl, text="RUN AI OCR CONVERSION", command=process_ai_ocr, bg="#6f42c1", fg="white", font=("Arial", 10, "bold"), width=30); btn_do_ocr.pack(side="left", padx=10)
 
 ocr_log_text = tk.Text(f3_box, height=8, bg="#f8f9fa", font=("Courier", 9))
 ocr_log_text.pack(fill="x", padx=10, pady=10)
