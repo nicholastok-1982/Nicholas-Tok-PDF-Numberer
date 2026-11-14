@@ -58,7 +58,7 @@ translations = {
         "prem_f2_desc": "*For digital PDFs with highlightable text only.",
         "prem_f2_btn": "CONVERT DIGITAL TO WORD",
         "prem_f3_title": "Premium #3: SCANNED PDF to Word (Deep Learning OCR)",
-        "prem_f3_desc": "*Uses AI to extract text from flat images. Requires internet on first run for models.",
+        "prem_f3_desc": "*100% Offline AI. Extracts English & Chinese from flat images.",
         "prem_f3_btn": "RUN AI OCR CONVERSION",
         "stat_ready": "Status: Ready",
         "stat_loading": "Status: Working... please wait.",
@@ -114,7 +114,7 @@ translations = {
         "prem_f2_desc": "*仅适用于可高亮文本的数字PDF。",
         "prem_f2_btn": "数字 PDF 转换 WORD",
         "prem_f3_title": "高级 #3: 扫描版 PDF 转 Word (深度学习 OCR)",
-        "prem_f3_desc": "*使用AI从图像提取文本。首次运行需联网下载模型。",
+        "prem_f3_desc": "*100% 离线 AI。从图像中提取中英文本。",
         "prem_f3_btn": "运行 AI OCR 转换",
         "stat_ready": "状态：就绪",
         "stat_loading": "状态：正在处理... 请稍候。",
@@ -392,6 +392,7 @@ def process_split():
 
 # ================= TAB 4: PREMIUM TOOLS =================
 def unlock_premium():
+    # THE UPDATED ACCESS CODE
     if prem_pass_entry.get() == "11066547":
         prem_lock_frame.pack_forget(); prem_content_frame.pack(fill="both", expand=True)
     else: messagebox.showerror("Access Denied", "Incorrect developer code.")
@@ -423,27 +424,23 @@ def process_pdf2word():
         messagebox.showinfo("Success", "Converted to Word Document!")
     except Exception as e: messagebox.showerror("Error", str(e))
 
-# --- Threaded AI OCR Implementation ---
+# --- Threaded RapidOCR (ONNX) Implementation ---
 def log_msg(msg):
-    # Thread-safe GUI update for OCR log
     root.after(0, lambda: [ocr_log_text.insert(tk.END, msg + "\n"), ocr_log_text.see(tk.END)])
 
 def threaded_ocr_process(pdf_path, out_path, lang_code):
     try:
-        log_msg("SYSTEM: Initializing Deep Learning OCR Engine...")
-        log_msg("WARNING: May pause here to download AI weights (~20MB) if first run.")
-        from paddleocr import PaddleOCR
+        log_msg("SYSTEM: Initializing RapidOCR (ONNX) AI Engine...")
+        log_msg("SYSTEM: AI Models are embedded. 100% Offline processing enabled.")
+        from rapidocr_onnxruntime import RapidOCR
         import cv2
         import numpy as np
         from docx import Document
         from docx.shared import Pt, RGBColor
         from docx.oxml.ns import qn
         
-        # 'ch' handles English, Simplified Chinese, and Traditional Chinese automatically
-        paddle_lang = 'ch' if "Chinese" in lang_code else 'en'
-        
-        # FIX: Removed show_log parameter to support latest PaddleOCR version
-        ocr = PaddleOCR(use_angle_cls=True, lang=paddle_lang)
+        # RapidOCR natively handles English and Chinese out of the box using Baidu's embedded ONNX models
+        ocr = RapidOCR()
         
         doc_pdf = fitz.open(pdf_path)
         doc_word = Document()
@@ -454,27 +451,32 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
             pix = page.get_pixmap(dpi=200)
             img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
             
+            # Format image colorspace for OpenCV
             if pix.n == 4: img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
             elif pix.n == 1: img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
             elif pix.n == 3: img = cv2.cvtColor(img, cv2.RGB2BGR)
             
             log_msg(f"Page {page_num+1}: Running Layout Analysis & Character Recognition...")
-            results = ocr.ocr(img, cls=True)
+            result, elapse = ocr(img)
             
-            if not results or not results[0]:
+            if not result:
                 doc_word.add_paragraph("")
                 continue
                 
-            lines = results[0]
+            # result structure from RapidOCR: [ [ [[x,y],[x,y],[x,y],[x,y]], "text", confidence ], ... ]
+            lines = result
+            # Sort boxes top-to-bottom, then left-to-right
             lines.sort(key=lambda x: (x[0][0][1] // 15, x[0][0][0]))
 
             for line in lines:
-                box, (text, conf) = line
+                box, text, conf = line
+                # box[3] is bottom-left, box[0] is top-left
                 box_height = box[3][1] - box[0][1]
                 font_size_pt = max(8, int(box_height * 0.70)) 
                 
                 p = doc_word.add_paragraph()
                 
+                # Basic alignment detection based on X coordinates
                 if box[0][0] > (pix.width * 0.6): p.alignment = 2
                 elif box[0][0] > (pix.width * 0.3): p.alignment = 1
                 else: p.alignment = 0 
@@ -482,11 +484,12 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
                 run = p.add_run(text)
                 run.font.size = Pt(font_size_pt)
                 
+                # Crucial Font Fallback for Chinese Characters to prevent missing glyphs
                 run.font.name = 'Arial'
                 run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
                 run.font.color.rgb = RGBColor(0, 0, 0)
                 
-            log_msg(f"Page {page_num+1} Completed successfully.")
+            log_msg(f"Page {page_num+1} Completed successfully. (Process time: {elapse:.2f}s)")
 
         doc_word.save(out_path)
         log_msg("===========================================")
@@ -505,7 +508,7 @@ def process_ai_ocr():
     if not out_file: return
     
     lang_sel = ocr_lang_var.get()
-    btn_do_ocr.config(state=tk.DISABLED) # Prevent multiple clicks
+    btn_do_ocr.config(state=tk.DISABLED) 
     ocr_log_text.delete(1.0, tk.END)
     
     thread = threading.Thread(target=threaded_ocr_process, args=(in_pdf, out_file, lang_sel))
@@ -629,7 +632,7 @@ prem_grid.columnconfigure(0, weight=1); prem_grid.columnconfigure(1, weight=1)
 
 f3_box = ttk.LabelFrame(prem_content_frame, text="Deep Learning OCR (Scanned to Word)"); f3_box.pack(fill="x", padx=50, pady=10)
 prem_f3_lbl = ttk.Label(f3_box, text="Premium #3: SCANNED PDF to Word", font=("Arial", 11, "bold")); prem_f3_lbl.pack(pady=5)
-prem_f3_desc = ttk.Label(f3_box, text="*Uses AI. Requires internet on first run to download model weights.", font=("Arial", 9, "italic"), foreground="gray"); prem_f3_desc.pack()
+prem_f3_desc = ttk.Label(f3_box, text="*100% Offline AI. Extracts English & Chinese from flat images.", font=("Arial", 9, "italic"), foreground="gray"); prem_f3_desc.pack()
 
 f3_ctrl = tk.Frame(f3_box); f3_ctrl.pack(pady=10)
 ttk.Label(f3_ctrl, text="Document Language:").pack(side="left", padx=5)
