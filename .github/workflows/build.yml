@@ -21,8 +21,11 @@ jobs:
     - name: Build the Portable Folder
       run: pyinstaller --windowed --collect-data tkinterdnd2 --collect-all rapidocr_onnxruntime --add-data "logo.jpg;." pdf_numberer.py
 
-    - name: Upload the finished software
+    - name: Password Protect the Software
+      run: 7z a -p"sta" PDF-Workstation-Secure.zip ./dist/pdf_numberer/
+
+    - name: Upload the Secure Zip
       uses: actions/upload-artifact@v4
       with:
-        name: PDF-Workstation-Portable
-        path: dist/pdf_numberer/
+        name: PDF-Workstation-Secure
+        path: PDF-Workstation-Secure.zip
