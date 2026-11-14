@@ -449,10 +449,9 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
             pix = page.get_pixmap(dpi=200)
             img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
             
-            # THE FIX: Ensure OpenCV converts colors directly to BGR correctly
             if pix.n == 4: img = cv2.cvtColor(img, cv2.COLOR_RGBA2BGR)
             elif pix.n == 1: img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
-            elif pix.n == 3: img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR) # CORRECTED LINE
+            elif pix.n == 3: img = cv2.cvtColor(img, cv2.COLOR_RGB2BGR)
             
             log_msg(f"Page {page_num+1}: Running Layout Analysis & Character Recognition...")
             result, elapse = ocr(img)
@@ -481,8 +480,14 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
                 run.font.name = 'Arial'
                 run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
                 run.font.color.rgb = RGBColor(0, 0, 0)
+            
+            # --- THE FIX: ADDING UP THE LIST OF PROCESSING TIMES ---
+            if isinstance(elapse, list):
+                total_time = sum(elapse)
+            else:
+                total_time = float(elapse)
                 
-            log_msg(f"Page {page_num+1} Completed successfully. (Process time: {elapse:.2f}s)")
+            log_msg(f"Page {page_num+1} Completed successfully. (Process time: {total_time:.2f}s)")
 
         doc_word.save(out_path)
         log_msg("===========================================")
