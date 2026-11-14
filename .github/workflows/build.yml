@@ -16,11 +16,10 @@ jobs:
         python-version: '3.11'
 
     - name: Install requirements
-      # We install paddlepaddle, paddleocr, opencv, and docx
-      run: pip install pymupdf==1.23.26 pyinstaller pillow tkinterdnd2 pdf2docx paddlepaddle paddleocr python-docx opencv-python
+      run: pip install pymupdf==1.23.26 pyinstaller pillow tkinterdnd2 pdf2docx rapidocr-onnxruntime python-docx opencv-python numpy
 
     - name: Build the Portable Folder
-      run: pyinstaller --windowed --collect-data tkinterdnd2 --add-data "logo.jpg;." pdf_numberer.py
+      run: pyinstaller --windowed --collect-data tkinterdnd2 --collect-all rapidocr_onnxruntime --add-data "logo.jpg;." pdf_numberer.py
 
     - name: Upload the finished software
       uses: actions/upload-artifact@v4
