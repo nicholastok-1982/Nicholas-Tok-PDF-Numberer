@@ -441,7 +441,9 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
         
         # 'ch' handles English, Simplified Chinese, and Traditional Chinese automatically
         paddle_lang = 'ch' if "Chinese" in lang_code else 'en'
-        ocr = PaddleOCR(use_angle_cls=True, lang=paddle_lang, show_log=False)
+        
+        # FIX: Removed show_log parameter to support latest PaddleOCR version
+        ocr = PaddleOCR(use_angle_cls=True, lang=paddle_lang)
         
         doc_pdf = fitz.open(pdf_path)
         doc_word = Document()
@@ -449,48 +451,39 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
         for page_num in range(len(doc_pdf)):
             log_msg(f"Processing Page {page_num+1}/{len(doc_pdf)}: Extracting high-res image...")
             page = doc_pdf[page_num]
-            # Extract image via PyMuPDF (Avoids Poppler Dependency)
             pix = page.get_pixmap(dpi=200)
             img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
             
-            # Convert colorspace for PaddleOCR (expects BGR or RGB depending on cv2 config)
             if pix.n == 4: img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
             elif pix.n == 1: img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-            elif pix.n == 3: img = cv2.cvtColor(img, cv2.RGB2BGR) # BGR required by Paddle underlying cv2
+            elif pix.n == 3: img = cv2.cvtColor(img, cv2.RGB2BGR)
             
             log_msg(f"Page {page_num+1}: Running Layout Analysis & Character Recognition...")
             results = ocr.ocr(img, cls=True)
             
             if not results or not results[0]:
-                doc_word.add_paragraph("") # Blank page
+                doc_word.add_paragraph("")
                 continue
                 
             lines = results[0]
-            # Layout parsing heuristic: Sort boxes top-to-bottom (Y), then left-to-right (X)
             lines.sort(key=lambda x: (x[0][0][1] // 15, x[0][0][0]))
 
             for line in lines:
                 box, (text, conf) = line
-                # Approximate font size from bounding box height
                 box_height = box[3][1] - box[0][1]
                 font_size_pt = max(8, int(box_height * 0.70)) 
                 
-                # Add layout to Word
                 p = doc_word.add_paragraph()
                 
-                # Alignment heuristic based on X-coordinate
-                if box[0][0] > (pix.width * 0.6): p.alignment = 2 # Right
-                elif box[0][0] > (pix.width * 0.3): p.alignment = 1 # Center
-                else: p.alignment = 0 # Left
+                if box[0][0] > (pix.width * 0.6): p.alignment = 2
+                elif box[0][0] > (pix.width * 0.3): p.alignment = 1
+                else: p.alignment = 0 
 
                 run = p.add_run(text)
                 run.font.size = Pt(font_size_pt)
                 
-                # Crucial Font Fallback for Chinese Characters to prevent "box" rendering
                 run.font.name = 'Arial'
                 run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
-                
-                # Approximate dark color
                 run.font.color.rgb = RGBColor(0, 0, 0)
                 
             log_msg(f"Page {page_num+1} Completed successfully.")
@@ -515,7 +508,6 @@ def process_ai_ocr():
     btn_do_ocr.config(state=tk.DISABLED) # Prevent multiple clicks
     ocr_log_text.delete(1.0, tk.END)
     
-    # Run on background thread
     thread = threading.Thread(target=threaded_ocr_process, args=(in_pdf, out_file, lang_sel))
     thread.daemon = True
     thread.start()
@@ -621,11 +613,9 @@ t4_f = tk.Frame(prem_content_frame); t4_f.pack(fill="x", padx=50, pady=10)
 ttk.Label(t4_f, text="Select Target PDF (or Drag & Drop):", font=("Arial", 10, "bold")).pack(anchor="w")
 f_br = tk.Frame(t4_f); f_br.pack(fill="x", pady=5); prem_f1_entry = ttk.Entry(f_br, width=70); prem_f1_entry.pack(side="left"); ttk.Button(f_br, text="Browse", command=t4_sel).pack(side="left", padx=10)
 
-# Flex grid for Premium Features
 prem_grid = tk.Frame(prem_content_frame)
 prem_grid.pack(fill="both", expand=True, padx=40, pady=10)
 
-# F1 & F2 Row
 f1_box = ttk.LabelFrame(prem_grid, text="Function 1"); f1_box.grid(row=0, column=0, padx=10, pady=5, sticky="ew")
 prem_f1_lbl = ttk.Label(f1_box, text="Remove PDF Restrictions", font=("Arial", 10, "bold")); prem_f1_lbl.pack(pady=5)
 btn_do_unlock = tk.Button(f1_box, text="STRIP RESTRICTIONS", command=process_unlock, bg="#28A745", fg="white", font=("Arial", 10, "bold"), pady=5, width=25); btn_do_unlock.pack(pady=5)
@@ -637,7 +627,6 @@ btn_do_word = tk.Button(f2_box, text="CONVERT TO WORD", command=process_pdf2word
 
 prem_grid.columnconfigure(0, weight=1); prem_grid.columnconfigure(1, weight=1)
 
-# F3 Box (Full width)
 f3_box = ttk.LabelFrame(prem_content_frame, text="Deep Learning OCR (Scanned to Word)"); f3_box.pack(fill="x", padx=50, pady=10)
 prem_f3_lbl = ttk.Label(f3_box, text="Premium #3: SCANNED PDF to Word", font=("Arial", 11, "bold")); prem_f3_lbl.pack(pady=5)
 prem_f3_desc = ttk.Label(f3_box, text="*Uses AI. Requires internet on first run to download model weights.", font=("Arial", 9, "italic"), foreground="gray"); prem_f3_desc.pack()
