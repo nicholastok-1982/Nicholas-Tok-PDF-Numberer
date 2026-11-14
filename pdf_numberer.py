@@ -217,7 +217,6 @@ def handle_drop(event):
         filepath = pdf_files[0]
         prem_f1_entry.delete(0, tk.END); prem_f1_entry.insert(0, filepath)
 
-
 def select_input_file():
     f = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
     if f: input_entry.delete(0, tk.END); input_entry.insert(0, f); load_previews(f)
@@ -432,22 +431,19 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
         import numpy as np
         from docx import Document
         from docx.shared import Pt, RGBColor
-        from docx.enum.text import WD_TAB_ALIGNMENT
+        from docx.enum.text import WD_TAB_ALIGNMENT, WD_LINE_SPACING
         from docx.oxml.ns import qn
         
         ocr = RapidOCR()
         doc_pdf = fitz.open(pdf_path)
         doc_word = Document()
 
-        # Step 1: Force Word document to have 0-inch margins so coordinates map perfectly.
         for section in doc_word.sections:
             section.top_margin = Pt(0)
             section.bottom_margin = Pt(0)
             section.left_margin = Pt(0)
             section.right_margin = Pt(0)
 
-        # Scale math: Extract images at 150 DPI for speed. 
-        # 1 inch = 150 pixels = 72 physical points. (Multiplier is 72/150 = 0.48)
         DPI = 150
         SCALE = 72.0 / DPI
 
@@ -468,7 +464,6 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
                 doc_word.add_page_break()
                 continue
                 
-            # Parse text boxes and apply resolution scaling
             blocks = []
             for line in result:
                 box, text, conf = line
@@ -479,10 +474,8 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
                 h = y1 - y0
                 blocks.append({'text': text, 'x': x0, 'y': y0, 'h': h})
 
-            # Sort top-to-bottom
             blocks.sort(key=lambda b: b['y'])
 
-            # Group into horizontal rows (for tables and multi-column mirroring)
             rows = []
             current_row = []
             row_y = -1
@@ -492,7 +485,6 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
                     current_row.append(b)
                     row_y = b['y']
                 else:
-                    # If same Y-axis (within 60% margin of error), it is the same line/row.
                     if abs(b['y'] - row_y) < (b['h'] * 0.6): 
                         current_row.append(b)
                     else:
@@ -501,47 +493,34 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
                         row_y = b['y']
             if current_row:
                 rows.append(current_row)
-
-            # Reconstruct the Page in Microsoft Word
-            prev_bottom_y = 0
             
             for r in rows:
-                r.sort(key=lambda b: b['x']) # Sort blocks left-to-right
-                
-                row_y = min(b['y'] for b in r)
-                row_h = max(b['h'] for b in r)
-                
-                # Push the paragraph down exactly where it belongs
-                space_before = row_y - prev_bottom_y
-                if space_before < 0: space_before = 0
+                r.sort(key=lambda b: b['x']) 
                 
                 p = doc_word.add_paragraph()
-                p.paragraph_format.space_before = Pt(space_before)
-                # p.paragraph_format.space_after = Pt(0)
+                
+                # --- NEW FORMATTING RULES APPLIED HERE ---
+                p.paragraph_format.space_before = Pt(0)
+                p.paragraph_format.space_after = Pt(0)
+                p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
                 
                 # Push the paragraph right exactly where it belongs
                 p.paragraph_format.left_indent = Pt(r[0]['x'])
                 
                 for i, b in enumerate(r):
-                    # Font math: Point size is usually ~75% of box bounding height
                     font_size_pt = max(7, int(b['h'] * 0.75))
                     
                     if i > 0:
-                        # Reconstruct columns/tables utilizing physical Tab Stops
                         p.paragraph_format.tab_stops.add_tab_stop(Pt(b['x']), WD_TAB_ALIGNMENT.LEFT)
                         run = p.add_run('\t' + b['text'])
                     else:
                         run = p.add_run(b['text'])
                     
-                    # Apply scaled font
                     run.font.size = Pt(font_size_pt)
                     run.font.name = 'Arial'
                     run._element.rPr.rFonts.set(qn('w:eastAsia'), 'Microsoft YaHei')
                     run.font.color.rgb = RGBColor(0, 0, 0)
                 
-                prev_bottom_y = row_y + (row_h * 1.1)
-
-            # Separate pages properly
             if page_num < len(doc_pdf) - 1:
                 doc_word.add_page_break()
 
@@ -550,7 +529,7 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
 
         doc_word.save(out_path)
         log_msg("===========================================")
-        log_msg("NOTE: Graphical elements (photos/lines) are not extracted. Layout is mirrored using Tab alignment.")
+        log_msg("NOTE: Paragraph settings locked to 0pt & Single spacing.")
         log_msg(f"SUCCESS: Document saved to {out_path}")
         log_msg("===========================================")
         root.after(0, lambda: btn_do_ocr.config(state=tk.NORMAL))
