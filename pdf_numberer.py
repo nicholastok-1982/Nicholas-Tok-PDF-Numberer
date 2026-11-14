@@ -392,7 +392,7 @@ def process_split():
 
 # ================= TAB 4: PREMIUM TOOLS =================
 def unlock_premium():
-    if prem_pass_entry.get() == "nicholas_tokismosthandsome":
+    if prem_pass_entry.get() == "11066547":
         prem_lock_frame.pack_forget(); prem_content_frame.pack(fill="both", expand=True)
     else: messagebox.showerror("Access Denied", "Incorrect developer code.")
 
