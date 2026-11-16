@@ -8,19 +8,23 @@ import threading
 from PIL import Image, ImageTk
 from pdf2docx import Converter
 
-thumbnail_references = []
-checkbox_vars = {}
-checkbox_widgets = {}
-preview_canvases = []
+# Store references to prevent garbage collection
+thumbnail_references_t1 = []
+preview_canvases_t1 = []
+
+thumbnail_references_t4 = []
+checkbox_vars_t4 = {}
+checkbox_widgets_t4 = {}
 
 # --- Translations Dictionary ---
 translations = {
     "EN": {
         "app_title": "STA Singapore QC - PDF Workstation",
         "name_label": "Nicholas Tok\nSTA Singapore QC Lab Instrument",
-        "tab_number": "1. Numbering & Rotate",
+        "tab_number": "1. Page Numbering",
         "tab_merge": "2. Merge & Mix",
         "tab_split": "3. Split & Extract",
+        "tab_rotate": "4. Rotation Settings",
         "tab_prem": "👑 Premium Tools",
         "frame1": "Select PDF (or Drag & Drop anywhere)",
         "browse": "Browse",
@@ -33,7 +37,8 @@ translations = {
         "frame3": "Rotation Settings",
         "rot_angle": "Checked Angle:",
         "process": "PROCESS & SAVE",
-        "preview_frame": "PDF Preview (Scroll & Check to Rotate)",
+        "preview_frame_t1": "PDF Preview (Scroll to view Number Placement)",
+        "preview_frame_t4": "PDF Preview (Scroll & Check to Rotate)",
         "lang": "Language / 语言:",
         "positions": ["Bottom Left", "Bottom Center", "Bottom Right", "Top Left", "Top Center", "Top Right"],
         "colors": ["Black", "Red", "Blue", "Green", "Gray", "White"],
@@ -74,9 +79,10 @@ translations = {
     "CN": {
         "app_title": "STA 新加坡 QC - PDF 工作站",
         "name_label": "Nicholas Tok\nSTA 新加坡 QC 实验室仪器",
-        "tab_number": "1. 页码与旋转",
+        "tab_number": "1. 页面编号",
         "tab_merge": "2. 合并与交替",
         "tab_split": "3. 拆分与提取",
+        "tab_rotate": "4. 旋转设置",
         "tab_prem": "👑 高级工具 (Premium)",
         "frame1": "选择 PDF 文件 (或直接拖放至此)",
         "browse": "浏览",
@@ -89,7 +95,8 @@ translations = {
         "frame3": "旋转设置",
         "rot_angle": "勾选页旋转角度：",
         "process": "处理并保存",
-        "preview_frame": "PDF 预览 (滑动滚轮，勾选旋转)",
+        "preview_frame_t1": "PDF 预览 (滚动查看页码位置)",
+        "preview_frame_t4": "PDF 预览 (滑动滚轮，勾选旋转)",
         "lang": "语言 / Language:",
         "positions": ["左下", "中下", "右下", "左上", "中上", "右上"],
         "colors": ["黑色", "红色", "蓝色", "绿色", "灰色", "白色"],
@@ -139,11 +146,14 @@ def change_language(event=None):
     root.title(t["app_title"])
     name_label.config(text=t["name_label"])
     lang_label.config(text=t["lang"])
+    
     notebook.tab(tab1_frame, text=t["tab_number"])
     notebook.tab(tab2_frame, text=t["tab_merge"])
     notebook.tab(tab3_frame, text=t["tab_split"])
-    notebook.tab(tab4_frame, text=t["tab_prem"])
+    notebook.tab(tab4_frame, text=t["tab_rotate"])
+    notebook.tab(tab5_frame, text=t["tab_prem"])
 
+    # Tab 1
     file_frame.config(text=t["frame1"])
     browse_btn.config(text=t["browse"])
     num_frame.config(text=t["frame2"])
@@ -152,18 +162,18 @@ def change_language(event=None):
     size_lbl.config(text=t["size"])
     color_lbl.config(text=t["color"])
     bg_chk.config(text=t["bg_chk"])
-    rot_frame.config(text=t["frame3"])
-    rot_angle_lbl.config(text=t["rot_angle"])
     process_btn.config(text=t["process"])
-    right_frame.config(text=t["preview_frame"])
+    right_frame.config(text=t["preview_frame_t1"])
+    
     pos_idx = pos_dropdown.current()
     pos_dropdown['values'] = t["positions"]
     pos_dropdown.current(pos_idx if pos_idx >= 0 else 1)
+    
     col_idx = color_dropdown.current()
     color_dropdown['values'] = t["colors"]
     color_dropdown.current(col_idx if col_idx >= 0 else 0)
-    for i, chk in checkbox_widgets.items(): chk.config(text=t["pg_rotate"].format(i+1))
 
+    # Tab 2
     merge_lbl.config(text=t["merge_lbl"])
     btn_add_merge.config(text=t["add_files"])
     btn_rem_merge.config(text=t["remove_files"])
@@ -172,6 +182,7 @@ def change_language(event=None):
     btn_do_merge.config(text=t["merge_btn"])
     btn_do_mix.config(text=t["mix_btn"])
 
+    # Tab 3
     split_file_lbl.config(text=t["split_file"])
     split_browse_btn.config(text=t["browse"])
     rb_ext.config(text=t["mode_extract"])
@@ -180,6 +191,16 @@ def change_language(event=None):
     rb_size.config(text=t["mode_split_size"])
     btn_do_split.config(text=t["split_btn"])
 
+    # Tab 4 (Rotation)
+    file_frame_t4.config(text=t["frame1"])
+    browse_btn_t4.config(text=t["browse"])
+    rot_frame_t4.config(text=t["frame3"])
+    rot_angle_lbl_t4.config(text=t["rot_angle"])
+    process_btn_t4.config(text=t["process"])
+    right_frame_t4.config(text=t["preview_frame_t4"])
+    for i, chk in checkbox_widgets_t4.items(): chk.config(text=t["pg_rotate"].format(i+1))
+
+    # Tab 5 (Premium)
     prem_lock_lbl.config(text=t["prem_lock_msg"])
     prem_unlock_btn.config(text=t["prem_unlock_btn"])
     prem_f1_lbl.config(text=t["prem_f1_title"])
@@ -197,6 +218,8 @@ def update_status(msg, color="black"):
     status_lbl_1.config(text=msg, foreground=color)
     status_lbl_2.config(text=msg, foreground=color)
     status_lbl_3.config(text=msg, foreground=color)
+    status_lbl_4.config(text=msg, foreground=color)
+    status_lbl_5.config(text=msg, foreground=color)
     root.update()
 
 def handle_drop(event):
@@ -204,27 +227,33 @@ def handle_drop(event):
     pdf_files = [f for f in dropped_files if f.lower().endswith('.pdf')]
     if not pdf_files: return
     current_tab = notebook.index(notebook.select())
-    if current_tab == 0:
+    
+    if current_tab == 0: # Tab 1 (Numbering)
         filepath = pdf_files[0]
         input_entry.delete(0, tk.END); input_entry.insert(0, filepath)
-        load_previews(filepath)
-    elif current_tab == 1:
+        load_previews_t1(filepath)
+    elif current_tab == 1: # Tab 2 (Merge)
         for f in pdf_files: merge_listbox.insert(tk.END, f)
-    elif current_tab == 2:
+    elif current_tab == 2: # Tab 3 (Split)
         filepath = pdf_files[0]
         split_entry.delete(0, tk.END); split_entry.insert(0, filepath)
-    elif current_tab == 3: 
+    elif current_tab == 3: # Tab 4 (Rotation)
+        filepath = pdf_files[0]
+        input_entry_t4.delete(0, tk.END); input_entry_t4.insert(0, filepath)
+        load_previews_t4(filepath)
+    elif current_tab == 4: # Tab 5 (Premium)
         filepath = pdf_files[0]
         prem_f1_entry.delete(0, tk.END); prem_f1_entry.insert(0, filepath)
 
-def select_input_file():
+# ================= TAB 1: Numbering =================
+def select_input_file_t1():
     f = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
-    if f: input_entry.delete(0, tk.END); input_entry.insert(0, f); load_previews(f)
+    if f: input_entry.delete(0, tk.END); input_entry.insert(0, f); load_previews_t1(f)
 
-def load_previews(filepath):
+def load_previews_t1(filepath):
     t = translations["EN" if lang_var.get() == "English" else "CN"]
     for widget in scrollable_frame.winfo_children(): widget.destroy()
-    thumbnail_references.clear(); checkbox_vars.clear(); checkbox_widgets.clear(); preview_canvases.clear()
+    thumbnail_references_t1.clear(); preview_canvases_t1.clear()
     update_status(t["stat_loading"], "blue")
     try:
         doc = fitz.open(filepath)
@@ -234,23 +263,20 @@ def load_previews(filepath):
             pix = doc[i].get_pixmap(matrix=fitz.Matrix(0.1, 0.1))
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
             photo = ImageTk.PhotoImage(img)
-            thumbnail_references.append(photo)
-            row, col = (i // columns) * 2, i % columns
+            thumbnail_references_t1.append(photo)
+            row, col = (i // columns), i % columns
             canvas_thumb = tk.Canvas(scrollable_frame, width=img.width, height=img.height, bd=1, relief="solid", highlightthickness=0)
-            canvas_thumb.grid(row=row, column=col, padx=10, pady=(10, 0))
+            canvas_thumb.grid(row=row, column=col, padx=10, pady=(10, 10))
             canvas_thumb.create_image(0, 0, anchor="nw", image=photo)
-            preview_canvases.append({"canvas": canvas_thumb, "width": img.width, "height": img.height, "dot_id": None})
-            var = tk.BooleanVar(); checkbox_vars[i] = var
-            chk = ttk.Checkbutton(scrollable_frame, text=t["pg_rotate"].format(i+1), variable=var)
-            chk.grid(row=row+1, column=col, pady=(0, 10))
-            checkbox_widgets[i] = chk
+            preview_canvases_t1.append({"canvas": canvas_thumb, "width": img.width, "height": img.height, "dot_id": None})
+            
         doc.close(); update_status(t["stat_ready"]); update_preview_dots()
     except Exception as e: update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
 def update_preview_dots(*args):
     pos_idx = max(0, pos_dropdown.current())
     margin, r = 8, 5
-    for item in preview_canvases:
+    for item in preview_canvases_t1:
         c, w, h = item["canvas"], item["width"], item["height"]
         if pos_idx in (0, 3): x = margin
         elif pos_idx in (2, 5): x = w - margin
@@ -268,7 +294,7 @@ def process_numbering():
     if not output_pdf: return
     update_status(t["stat_loading"], "blue")
     try:
-        fontsize = int(size_var.get()); use_bg = bg_var.get(); rot_angle = int(rot_angle_var.get().replace("°", ""))
+        fontsize = int(size_var.get()); use_bg = bg_var.get()
         fontname = ["helv", "times-roman", "cour"][max(0, font_dropdown.current())]
         pos_idx = max(0, pos_dropdown.current())
         color = [(0,0,0), (1,0,0), (0,0,1), (0,0.5,0), (0.5,0.5,0.5), (1,1,1)][max(0, color_dropdown.current())]
@@ -286,11 +312,62 @@ def process_numbering():
             else: y = rect.y1 - my
             if use_bg: page.draw_rect(fitz.Rect(x-5, y-fontsize-2, x+text_len+5, y+5), color=(1,1,1), fill=(1,1,1), overlay=True)
             page.insert_text((x, y), text, fontsize=fontsize, fontname=fontname, color=color, overlay=True)
-            if p in checkbox_vars and checkbox_vars[p].get(): orig_rot += rot_angle
-            page.set_rotation(orig_rot)
+            page.set_rotation(orig_rot) # Preserve original rotation
         doc.save(output_pdf); doc.close(); update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e: update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
+# ================= TAB 4: Rotation Settings =================
+def select_input_file_t4():
+    f = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
+    if f: input_entry_t4.delete(0, tk.END); input_entry_t4.insert(0, f); load_previews_t4(f)
+
+def load_previews_t4(filepath):
+    t = translations["EN" if lang_var.get() == "English" else "CN"]
+    for widget in scrollable_frame_t4.winfo_children(): widget.destroy()
+    thumbnail_references_t4.clear(); checkbox_vars_t4.clear(); checkbox_widgets_t4.clear()
+    update_status(t["stat_loading"], "blue")
+    try:
+        doc = fitz.open(filepath)
+        columns = 4 
+        for i in range(len(doc)):
+            if i % 10 == 0: update_status(f"Loading preview {i}/{len(doc)}...", "blue")
+            pix = doc[i].get_pixmap(matrix=fitz.Matrix(0.1, 0.1))
+            img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+            photo = ImageTk.PhotoImage(img)
+            thumbnail_references_t4.append(photo)
+            row, col = (i // columns) * 2, i % columns
+            canvas_thumb = tk.Canvas(scrollable_frame_t4, width=img.width, height=img.height, bd=1, relief="solid", highlightthickness=0)
+            canvas_thumb.grid(row=row, column=col, padx=10, pady=(10, 0))
+            canvas_thumb.create_image(0, 0, anchor="nw", image=photo)
+            
+            var = tk.BooleanVar(); checkbox_vars_t4[i] = var
+            chk = ttk.Checkbutton(scrollable_frame_t4, text=t["pg_rotate"].format(i+1), variable=var)
+            chk.grid(row=row+1, column=col, pady=(0, 10))
+            checkbox_widgets_t4[i] = chk
+            
+        doc.close(); update_status(t["stat_ready"])
+    except Exception as e: update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
+
+def process_rotation():
+    t = translations["EN" if lang_var.get() == "English" else "CN"]
+    input_pdf = input_entry_t4.get()
+    if not os.path.exists(input_pdf): return messagebox.showerror(t["msg_err"], t["err_no_pdf"])
+    output_pdf = filedialog.asksaveasfilename(defaultextension=".pdf", filetypes=[("PDF files", "*.pdf")], title=t["save_as"])
+    if not output_pdf: return
+    update_status(t["stat_loading"], "blue")
+    try:
+        rot_angle = int(rot_angle_var_t4.get().replace("°", ""))
+        doc = fitz.open(input_pdf)
+        for p in range(len(doc)):
+            if p in checkbox_vars_t4 and checkbox_vars_t4[p].get():
+                page = doc[p]
+                page.set_rotation((page.rotation + rot_angle) % 360)
+        doc.save(output_pdf); doc.close()
+        update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
+    except Exception as e: update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
+
+
+# ================= TAB 2 & 3 FUNCTIONS =================
 def t2_add():
     for f in filedialog.askopenfilenames(filetypes=[("PDF files", "*.pdf")]): merge_listbox.insert(tk.END, f)
 def t2_rem():
@@ -387,12 +464,13 @@ def process_split():
         doc.close(); update_status(t["stat_success"], "green"); messagebox.showinfo(t["app_title"], t["msg_success"])
     except Exception as e: update_status(t["stat_err"], "red"); messagebox.showerror(t["msg_err"], str(e))
 
+# ================= TAB 5: PREMIUM TOOLS =================
 def unlock_premium():
     if prem_pass_entry.get() == "11066547":
         prem_lock_frame.pack_forget(); prem_content_frame.pack(fill="both", expand=True)
     else: messagebox.showerror("Access Denied", "Incorrect developer code.")
 
-def t4_sel():
+def t5_sel():
     f = filedialog.askopenfilename(filetypes=[("PDF files", "*.pdf")])
     if f: prem_f1_entry.delete(0, tk.END); prem_f1_entry.insert(0, f)
 
@@ -419,7 +497,6 @@ def process_pdf2word():
         messagebox.showinfo("Success", "Converted to Word Document!")
     except Exception as e: messagebox.showerror("Error", str(e))
 
-# ================= NEW AI OCR ENGINE (LAYOUT MIRRORING) =================
 def log_msg(msg):
     root.after(0, lambda: [ocr_log_text.insert(tk.END, msg + "\n"), ocr_log_text.see(tk.END)])
 
@@ -496,15 +573,11 @@ def threaded_ocr_process(pdf_path, out_path, lang_code):
             
             for r in rows:
                 r.sort(key=lambda b: b['x']) 
-                
                 p = doc_word.add_paragraph()
                 
-                # --- NEW FORMATTING RULES APPLIED HERE ---
                 p.paragraph_format.space_before = Pt(0)
                 p.paragraph_format.space_after = Pt(0)
                 p.paragraph_format.line_spacing_rule = WD_LINE_SPACING.SINGLE
-                
-                # Push the paragraph right exactly where it belongs
                 p.paragraph_format.left_indent = Pt(r[0]['x'])
                 
                 for i, b in enumerate(r):
@@ -552,10 +625,14 @@ def process_ai_ocr():
     thread.daemon = True
     thread.start()
 
+# ================= MOUSE SCROLL =================
 def _on_mousewheel(event):
-    if notebook.index(notebook.select()) != 0: return
+    idx = notebook.index(notebook.select())
     try:
-        if scrollable_frame.winfo_height() > canvas.winfo_height(): canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        if idx == 0 and scrollable_frame.winfo_height() > canvas.winfo_height(): 
+            canvas.yview_scroll(int(-1*(event.delta/120)), "units")
+        elif idx == 3 and scrollable_frame_t4.winfo_height() > canvas_t4.winfo_height(): 
+            canvas_t4.yview_scroll(int(-1*(event.delta/120)), "units")
     except Exception: pass
 
 # ================= GUI CONSTRUCTION =================
@@ -583,16 +660,25 @@ try:
 except Exception: pass
 
 notebook = ttk.Notebook(root); notebook.pack(fill="both", expand=True, padx=10, pady=5)
-tab1_frame = ttk.Frame(notebook); tab2_frame = ttk.Frame(notebook); tab3_frame = ttk.Frame(notebook); tab4_frame = ttk.Frame(notebook)
-notebook.add(tab1_frame, text="1. Numbering & Rotate"); notebook.add(tab2_frame, text="2. Merge & Mix"); notebook.add(tab3_frame, text="3. Split & Extract"); notebook.add(tab4_frame, text="👑 Premium Tools")
+tab1_frame = ttk.Frame(notebook)
+tab2_frame = ttk.Frame(notebook)
+tab3_frame = ttk.Frame(notebook)
+tab4_frame = ttk.Frame(notebook)
+tab5_frame = ttk.Frame(notebook)
+notebook.add(tab1_frame, text="1. Page Numbering")
+notebook.add(tab2_frame, text="2. Merge & Mix")
+notebook.add(tab3_frame, text="3. Split & Extract")
+notebook.add(tab4_frame, text="4. Rotation Settings")
+notebook.add(tab5_frame, text="👑 Premium Tools")
 
+# ========== TAB 1 UI (Numbering) ==========
 t1_paned = ttk.PanedWindow(tab1_frame, orient=tk.HORIZONTAL); t1_paned.pack(fill="both", expand=True, padx=5, pady=5)
 left_frame = ttk.Frame(t1_paned); t1_paned.add(left_frame, weight=1)
 right_frame = ttk.LabelFrame(t1_paned, text="PDF Preview"); t1_paned.add(right_frame, weight=3)
 
 file_frame = ttk.LabelFrame(left_frame, text="Select PDF (or Drag & Drop)"); file_frame.pack(fill="x", pady=5)
 input_entry = ttk.Entry(file_frame); input_entry.pack(fill="x", padx=10, pady=5)
-browse_btn = ttk.Button(file_frame, text="Browse", command=select_input_file); browse_btn.pack(pady=5)
+browse_btn = ttk.Button(file_frame, text="Browse", command=select_input_file_t1); browse_btn.pack(pady=5)
 
 num_frame = ttk.LabelFrame(left_frame, text="Page Number Styling"); num_frame.pack(fill="x", pady=10)
 font_lbl = ttk.Label(num_frame, text="Font:"); font_lbl.grid(row=0, column=0, padx=5, pady=5, sticky="e")
@@ -603,9 +689,6 @@ size_lbl = ttk.Label(num_frame, text="Size:"); size_lbl.grid(row=2, column=0, pa
 color_lbl = ttk.Label(num_frame, text="Color:"); color_lbl.grid(row=3, column=0, padx=5, pady=5, sticky="e"); color_dropdown = ttk.Combobox(num_frame, state="readonly", width=17, values=("Black", "Red", "Blue", "Green", "Gray", "White")); color_dropdown.current(0); color_dropdown.grid(row=3, column=1, pady=5)
 bg_var = tk.BooleanVar(value=False); bg_chk = ttk.Checkbutton(num_frame, text="Solid White Box Behind Number", variable=bg_var); bg_chk.grid(row=4, column=0, columnspan=2, pady=5, padx=5, sticky="w")
 
-rot_frame = ttk.LabelFrame(left_frame, text="Rotation Settings"); rot_frame.pack(fill="x", pady=5)
-rot_angle_lbl = ttk.Label(rot_frame, text="Checked Angle:"); rot_angle_lbl.grid(row=0, column=0, padx=5, pady=5, sticky="e")
-rot_angle_var = tk.StringVar(value="90°"); ttk.Combobox(rot_frame, textvariable=rot_angle_var, state="readonly", width=10, values=("90°", "180°", "270°")).grid(row=0, column=1, pady=5)
 process_btn = tk.Button(left_frame, text="PROCESS & SAVE", command=process_numbering, bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10); process_btn.pack(fill="x", pady=10)
 status_lbl_1 = ttk.Label(left_frame, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_1.pack()
 
@@ -614,6 +697,7 @@ scrollable_frame = ttk.Frame(canvas); scrollable_frame.bind("<Configure>", lambd
 canvas.create_window((0, 0), window=scrollable_frame, anchor="nw"); canvas.configure(yscrollcommand=scrollbar.set)
 canvas.pack(side="left", fill="both", expand=True); scrollbar.pack(side="right", fill="y"); root.bind_all("<MouseWheel>", _on_mousewheel)
 
+# ========== TAB 2 UI (Merge & Mix) ==========
 t2_center = tk.Frame(tab2_frame); t2_center.pack(pady=30)
 merge_lbl = ttk.Label(t2_center, text="Add files in order (or Drag & Drop multiple here):", font=("Arial", 11, "bold")); merge_lbl.pack(anchor="w")
 listbox_frame = tk.Frame(t2_center); listbox_frame.pack(pady=5); merge_listbox = tk.Listbox(listbox_frame, width=80, height=15, selectmode=tk.EXTENDED, font=("Arial", 10)); merge_listbox.pack(side=tk.LEFT, fill=tk.BOTH)
@@ -627,6 +711,7 @@ btn_do_merge = tk.Button(t2_center, text="MERGE PDFs", command=process_merge, bg
 btn_do_mix = tk.Button(t2_center, text="ALTERNATE MIX", command=process_mix, bg="#17A2B8", fg="white", font=("Arial", 11, "bold"), width=30, pady=5); btn_do_mix.pack(pady=5)
 status_lbl_2 = ttk.Label(t2_center, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_2.pack(pady=10)
 
+# ========== TAB 3 UI (Split) ==========
 t3_center = tk.Frame(tab3_frame); t3_center.pack(pady=30, padx=50, fill="x")
 split_file_lbl = ttk.Label(t3_center, text="Select File to Split/Extract (or Drag & Drop):", font=("Arial", 11, "bold")); split_file_lbl.pack(anchor="w")
 t3_f = tk.Frame(t3_center); t3_f.pack(fill="x", pady=5); split_entry = ttk.Entry(t3_f, width=70); split_entry.pack(side="left"); split_browse_btn = ttk.Button(t3_f, text="Browse", command=t3_sel); split_browse_btn.pack(side="left", padx=10)
@@ -638,15 +723,37 @@ f_sz = tk.Frame(modes_frame); f_sz.pack(fill="x", pady=5); rb_size = ttk.Radiobu
 btn_do_split = tk.Button(t3_center, text="EXECUTE", command=process_split, bg="#DC3545", fg="white", font=("Arial", 11, "bold"), width=30, pady=10); btn_do_split.pack(pady=20)
 status_lbl_3 = ttk.Label(t3_center, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_3.pack()
 
-prem_lock_frame = tk.Frame(tab4_frame); prem_lock_frame.pack(expand=True)
+# ========== TAB 4 UI (Rotation Settings) ==========
+t4_paned = ttk.PanedWindow(tab4_frame, orient=tk.HORIZONTAL); t4_paned.pack(fill="both", expand=True, padx=5, pady=5)
+left_frame_t4 = ttk.Frame(t4_paned); t4_paned.add(left_frame_t4, weight=1)
+right_frame_t4 = ttk.LabelFrame(t4_paned, text="PDF Preview"); t4_paned.add(right_frame_t4, weight=3)
+
+file_frame_t4 = ttk.LabelFrame(left_frame_t4, text="Select PDF (or Drag & Drop)"); file_frame_t4.pack(fill="x", pady=5)
+input_entry_t4 = ttk.Entry(file_frame_t4); input_entry_t4.pack(fill="x", padx=10, pady=5)
+browse_btn_t4 = ttk.Button(file_frame_t4, text="Browse", command=select_input_file_t4); browse_btn_t4.pack(pady=5)
+
+rot_frame_t4 = ttk.LabelFrame(left_frame_t4, text="Rotation Settings"); rot_frame_t4.pack(fill="x", pady=10)
+rot_angle_lbl_t4 = ttk.Label(rot_frame_t4, text="Checked Angle:"); rot_angle_lbl_t4.grid(row=0, column=0, padx=5, pady=15, sticky="e")
+rot_angle_var_t4 = tk.StringVar(value="90°"); ttk.Combobox(rot_frame_t4, textvariable=rot_angle_var_t4, state="readonly", width=10, values=("90°", "180°", "270°")).grid(row=0, column=1, pady=15)
+
+process_btn_t4 = tk.Button(left_frame_t4, text="PROCESS & SAVE", command=process_rotation, bg="#004C99", fg="white", font=("Arial", 11, "bold"), pady=10); process_btn_t4.pack(fill="x", pady=10)
+status_lbl_4 = ttk.Label(left_frame_t4, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_4.pack()
+
+canvas_t4 = tk.Canvas(right_frame_t4, bg="#e0e0e0"); scrollbar_t4 = ttk.Scrollbar(right_frame_t4, orient="vertical", command=canvas_t4.yview)
+scrollable_frame_t4 = ttk.Frame(canvas_t4); scrollable_frame_t4.bind("<Configure>", lambda e: canvas_t4.configure(scrollregion=canvas_t4.bbox("all")))
+canvas_t4.create_window((0, 0), window=scrollable_frame_t4, anchor="nw"); canvas_t4.configure(yscrollcommand=scrollbar_t4.set)
+canvas_t4.pack(side="left", fill="both", expand=True); scrollbar_t4.pack(side="right", fill="y")
+
+# ========== TAB 5 UI (PREMIUM) ==========
+prem_lock_frame = tk.Frame(tab5_frame); prem_lock_frame.pack(expand=True)
 prem_lock_lbl = tk.Label(prem_lock_frame, text="RESTRICTED ACCESS\nEnter developer access code to unlock Premium Functions:", font=("Arial", 12, "bold"), fg="#DC3545", pady=10); prem_lock_lbl.pack()
 prem_pass_entry = ttk.Entry(prem_lock_frame, show="*", width=35, font=("Arial", 12)); prem_pass_entry.pack(pady=10)
 prem_unlock_btn = tk.Button(prem_lock_frame, text="UNLOCK", command=unlock_premium, bg="#FFC107", font=("Arial", 11, "bold"), width=15); prem_unlock_btn.pack(pady=10)
 
-prem_content_frame = tk.Frame(tab4_frame)
+prem_content_frame = tk.Frame(tab5_frame)
 t4_f = tk.Frame(prem_content_frame); t4_f.pack(fill="x", padx=50, pady=10)
 ttk.Label(t4_f, text="Select Target PDF (or Drag & Drop):", font=("Arial", 10, "bold")).pack(anchor="w")
-f_br = tk.Frame(t4_f); f_br.pack(fill="x", pady=5); prem_f1_entry = ttk.Entry(f_br, width=70); prem_f1_entry.pack(side="left"); ttk.Button(f_br, text="Browse", command=t4_sel).pack(side="left", padx=10)
+f_br = tk.Frame(t4_f); f_br.pack(fill="x", pady=5); prem_f1_entry = ttk.Entry(f_br, width=70); prem_f1_entry.pack(side="left"); ttk.Button(f_br, text="Browse", command=t5_sel).pack(side="left", padx=10)
 
 prem_grid = tk.Frame(prem_content_frame)
 prem_grid.pack(fill="both", expand=True, padx=40, pady=10)
@@ -674,6 +781,8 @@ btn_do_ocr = tk.Button(f3_ctrl, text="RUN AI OCR CONVERSION", command=process_ai
 
 ocr_log_text = tk.Text(f3_box, height=8, bg="#f8f9fa", font=("Courier", 9))
 ocr_log_text.pack(fill="x", padx=10, pady=10)
+
+status_lbl_5 = ttk.Label(prem_content_frame, text="Status: Ready", font=("Arial", 10, "bold")); status_lbl_5.pack()
 
 change_language()
 root.mainloop()
